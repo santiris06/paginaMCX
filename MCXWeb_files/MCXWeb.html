@@ -1,0 +1,481 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!-- saved from url=(0033)http://172.17.110.85/MCXWeb.html# -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+  <link type="text/css" href="./MCXWeb_files/jquery-ui-1.8.17.custom.css" rel="stylesheet">
+  <link type="text/css" href="./MCXWeb_files/mcxweb.css" rel="stylesheet">
+  <link type="text/css" href="./MCXWeb_files/supervisor_table.css" rel="stylesheet">
+
+  <script type="text/javascript" src="./MCXWeb_files/xml2json.js.descarga"></script>
+
+  <script type="text/javascript" src="./MCXWeb_files/mcxweb_utils.js.descarga"></script>
+  <script type="text/javascript" src="./MCXWeb_files/mcxweb.js.descarga"></script>
+  <script type="text/javascript" src="./MCXWeb_files/mcxweb_ui.js.descarga"></script>
+
+  <script type="text/javascript" src="./MCXWeb_files/jquery.min.js.descarga"></script>
+  <script type="text/javascript" src="./MCXWeb_files/jquery-ui.custom.min.js.descarga"></script>
+
+  <script type="text/javascript" src="./MCXWeb_files/supervisor_table.js.descarga"></script>
+
+  <link type="text/css" href="./MCXWeb_files/keyboard.css" rel="stylesheet">
+  <script type="text/javascript" src="./MCXWeb_files/jquery.keyboard.js.descarga"></script>
+
+  <script type="text/javascript" src="./MCXWeb_files/attrchange.js.descarga"></script>
+  
+  <link type="text/css" href="./MCXWeb_files/jquery.date-dropdowns.css" rel="stylesheet">
+  <script type="text/javascript" src="./MCXWeb_files/jquery.date-dropdowns.js.descarga"></script>
+
+  <script>
+    var LOCAL_START_TIME = 0;
+    var DEVICE_TIME = 0;
+
+    function setupVirtualKeyboard() {
+      if (MCXWeb.Cookies.GetCookie("vkenable", "") == "true") {
+        virtualKeyboardEnable = true;
+
+        $("#content_area").find('input[type=text], input[type=password], textarea').keyboard({
+          layout: "touchscreen",
+          usePreview: true,
+          autoAccept: true,
+          position: { of: '#page_header',
+            my: 'center top',
+            at: 'center bottom',
+            offset: '0 100'
+          }
+        });
+      }
+    };
+
+    function loadContentArea(html_page_to_load) {
+      //Prevent memory leak            
+      $("#content_area > *").remove();
+      $("#popup_dialog").remove();
+      //^^^
+
+      $("#content_area").load(html_page_to_load, function(response, status, xml) {
+        if (status == "error") {
+          var msg = "Sorry but there was an error: ";
+          alert(msg + xml.status + " " + xml.statusText);
+        } else {
+          MCXWeb.SetupForm(document.getElementById("content_area"));
+        }
+      });
+    };
+
+    function loadHome() {
+      loadContentArea('NetworkOverview.html');
+    };
+
+    function loadHelp() {
+      loadContentArea('Help.html');
+    };
+
+    function loadAlarms() {
+      loadContentArea('ActiveAlarms.html');
+    };
+
+    function loadHistoricalAlarms() {
+      loadContentArea('DeviceHistoricalAlarms.html');
+    };
+
+    function loadNetworkOverview() {
+      loadContentArea('NetworkOverview.html');
+    };
+
+    function loadHistory() {
+      loadContentArea('History.html');
+    };
+
+    function loadHistoryConf() {
+      loadContentArea('HistoryConf.html');
+    };
+
+    function loadDeviceOverview() {
+      var node_app_name = MCXWeb.Cookies.GetCookie("NodeAppName");
+      if (MCXWeb.Cookies.GetCookie("NodeAppName") != undefined) {
+        var html_page_to_load = "DeviceOverview_" + node_app_name + ".html"
+        $("#content_area").load(html_page_to_load, function(response, status, xml) {
+          if (status == "error") {
+            loadContentArea('DeviceOverview.html');
+          } else {
+            MCXWeb.SetupForm(document.getElementById("content_area"));
+          }
+        });
+      }
+    };
+
+    function loadDeviceDetails() {
+      loadContentArea('DeviceDetails.html');
+    };
+
+    function loadDeviceUpdateApp() {
+      loadContentArea('DeviceUpdateApp.html');
+    };
+
+    function loadDeviceUpdateBios() {
+      loadContentArea('DeviceUpdateBios.html');
+    };
+
+    function loadUsersAdmin() {
+      loadContentArea('UserAdmin.html');
+    };
+
+    function loadUserConfiguration() {
+      loadContentArea('UserConfiguration.html');
+    };
+
+    function loadSiteConf() {
+      loadContentArea('SiteConf.html');
+    };
+
+    function loadSystemTest() {
+      loadContentArea('SystemTest.html');
+    };
+
+    function loadReboot() {
+      loadContentArea('Reboot.html');
+    };
+
+    function loadNetworkSetup() {
+      loadContentArea('NetworkSetup.html');
+    };
+
+    function loadDeviceAlarms() {
+      loadContentArea('DeviceAlarms.html');
+    };
+
+    function loadDeviceRuntimeGraphs() {
+      loadContentArea('DeviceRuntimeGraphs.html');
+    };
+
+    function loadDeviceBackup() {
+      loadContentArea('DeviceBackup.html');
+    };
+
+    function loadDeviceRestore() {
+      loadContentArea('DeviceRestore.html');
+    };
+
+    function loadDeviceInfo() {
+      loadContentArea('DeviceInfo.html');
+    };
+
+    function loadSystemConf() {
+      loadContentArea('SystemConf.html');
+    };
+
+    function loadNTPConf() {
+      loadContentArea('NTPConf.html');
+    };
+
+    function loadTemplateConf() {
+      loadContentArea('TemplateConf.html');
+    };
+
+    function setHeaderPageID(text) {
+      document.getElementById("pageId").innerHTML = "&nbsp;" + unescape(text);
+    };
+
+    function logout() {
+      MCXWeb.ClearCache();
+      document.location = "Login.html"
+    };
+
+    function update_watch() {
+
+      if (LOCAL_START_TIME == 0) {
+
+        var start_req_time = Date.now();
+
+        $.ajax({
+          type: "POST",
+          url: "/cgi-bin/ntp.cgi",
+          data: "rq=0x0000",
+          async: false,
+          success: function(xml) {
+
+            DEVICE_TIME = ($(xml).find("localtime").text()) * 1000 + ((Date.now() - start_req_time) / 2);
+            LOCAL_START_TIME = Date.now();
+
+          }
+        });
+      };
+
+      var d = new Date(DEVICE_TIME + (Date.now() - LOCAL_START_TIME));
+
+      document.getElementById("watch").innerHTML = "&nbsp;" +
+        ("0" + d.getUTCDate()).slice(-2) + "/" +
+        ("0" + (d.getUTCMonth() + 1)).slice(-2) + "/" +
+        (d.getUTCFullYear()) + " " +
+        ("0" + d.getUTCHours()).slice(-2) + ":" +
+        ("0" + d.getUTCMinutes()).slice(-2) + ":" +
+        ("0" + d.getUTCSeconds()).slice(-2);
+
+      if ((Date.now() - LOCAL_START_TIME) > 600000) {
+
+        LOCAL_START_TIME = 0;
+      }
+    };
+
+    function getHistoryEnabled() {
+
+      var configuration = MCXWeb.GetTextFile(MCXWeb.ConfigDirectory + "configuration.xml", "null");
+
+      if (configuration == "null")
+        return MCXWeb.LoadingTag;
+
+      var j_configuration = $.parseXML(configuration);
+
+      var history_enabled = $(j_configuration).find("History_Enabled").text();
+
+      if (history_enabled == "1") {
+
+        return 1;
+      } else {
+
+        return 0;
+      }
+    };
+
+    function getHistoricalAlarmEnabled() {
+
+      if (MCXWeb.HistoricaAlarmsEnabled == null) {
+        var configuration = MCXWeb.GetTextFile(MCXWeb.ConfigDirectory + "configuration.xml", "null");
+
+        if (configuration == "null")
+          return MCXWeb.LoadingTag;
+
+        var j_configuration = $.parseXML(configuration);
+
+        var history_enabled = $(j_configuration).find("Historical_Alarm").text();
+
+        if (history_enabled == "1") {
+          MCXWeb.HistoricaAlarmsEnabled = 1
+        } else {
+          MCXWeb.HistoricaAlarmsEnabled = 0
+        }
+      }
+
+      return MCXWeb.HistoricaAlarmsEnabled;
+    };
+
+    function get_site_name() {
+      var configuration = MCXWeb.GetTextFile(MCXWeb.ConfigDirectory + "configuration.xml", "null");
+
+      if (configuration == "null")
+        return MCXWeb.LoadingTag;
+
+      if ($(configuration).find("Site_Name").text() == "") {
+
+        return "MCXWeb";
+
+      } else {
+
+        return $(configuration).find("Site_Name").text();
+      }
+    }
+
+    var style_already_applied = false;
+
+    function style_callback() {
+      if (!style_already_applied) {
+        style_already_applied = true;
+
+        loadNetworkOverview();
+
+        window.setInterval(update_watch, 1000);
+      }
+    };
+
+    MCXWeb.StyleCallback = style_callback;
+    MCXWeb.EnableContinuousUpdate = true;
+
+  </script>
+
+  <script>
+    $(document).ready(function() {
+      $(".level_1_menu_link").hover(function() {
+        $(this).parent().find('div').each(function(i, val) {
+          $(this).show();
+        });
+      });
+
+      $(".level_2_menu_link").click(function() {
+        $(this).closest("div").hide();
+      });
+
+    });
+
+  </script>
+
+</head>
+
+<body onload="MCXWeb.SetupForm(document.getElementById(&#39;main_menu_contained&#39;));">
+
+  <div id="conteiner">
+
+    <div id="header" onclick="javascript:document.location.reload();">
+      <div style="position: absolute; background: url(&#39;../images/header-sx.png&#39;) scroll 0 0 #FFFFFF; width:437px; height:32px; left:0px; top:0px;">
+
+      </div>
+
+      <div style="position: absolute; background: url(&#39;../images/header-dx.png&#39;) scroll 0 0 #FFFFFF; width:100px; height:32px; right:0px; top:0px;">
+
+      </div>
+    </div>
+
+    <div id="main_menu_contained">
+      <div id="main_menu">
+        <ul>
+          <li><a href="javascript:loadNetworkOverview()" target="_self">Network</a></li>
+          <li mcx:hide=" " style="display: none;"><a href="javascript:loadHistory()" target="_self">History</a></li>
+          <li><a href="javascript:loadAlarms()" target="_self">Alarms</a></li>
+          <li mcx:hide=" " style="display: inline;"><a class="level_1_menu_link" id="menu_configuration" href="http://172.17.110.85/MCXWeb.html#" target="_self">Configuration</a>
+            <div style="display: block;">
+              <ul>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadNetworkSetup()" target="_self" style="display: inline;">Network</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadTemplateConf()" target="_self" style="display: inline;">Template &amp; Files</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadUsersAdmin()" target="_self" style="display: inline;">Users</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadSystemConf()" target="_self" style="display: inline;">System</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadDeviceUpdateApp()" target="_self" style="display: inline;">Update</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadHistoryConf()" target="_self" style="display: none;">History</a></li>
+              </ul>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div id="watch" style="position: absolute; right:5px; top:10px;">&nbsp;27/08/2025 17:33:49</div>
+      <div style="visibility: hidden;">3</div>
+    </div>
+
+    <div id="page_header">
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tbody><tr>
+          <td id="pageId">&nbsp;Templates &amp; Files</td>
+          <td width="30px" align="center">
+            <a href="javascript:loadHome()"><img src="./MCXWeb_files/home.png" alt="Home"></a>
+          </td>
+          <td width="10px" align="center">
+            <img src="./MCXWeb_files/separator.png">
+          </td>
+          <td width="30px" align="center">
+            <a href="javascript:logout();"><img src="./MCXWeb_files/logout.png" alt="Logout"></a>
+          </td>
+          <td width="10px" align="center">
+            <img src="./MCXWeb_files/separator.png">
+          </td>
+          <td width="30px" align="center">
+            <a href="javascript:loadHelp();"><img src="./MCXWeb_files/help.png" alt="Logout"></a>
+          </td>
+        </tr>
+      </tbody></table>
+    </div>
+
+    <div id="content_area"><style>
+span#stylefileinput-select_upload_template
+{
+    position:relative;
+}
+
+span#stylefileinput-select_upload_template span
+{
+    position:absolute;
+    display:block;
+    top:-2px;
+    overflow:hidden;
+    z-index:1;
+    width:75px;
+    height:24px;
+    opacity:0;
+    filter:alpha(opacity=0)
+}
+
+span#stylefileinput-select_upload_template span input
+{
+    position:absolute;
+    left:-140px;
+    cursor:pointer
+}
+
+span#stylefileinput-select_upload_template input.stylefileinput-button
+{
+    position:relative;
+    z-index:0
+}
+</style>
+
+
+
+
+
+
+<p style="display: none;">3</p>
+
+<div id="wait" style="width: 100%; display: none;">
+    <center> 
+    <br>
+    <br>
+    <br><br><img src="./MCXWeb_files/loading_page.gif">
+    <br>
+    <br>
+    </center>
+</div>
+
+
+
+<div id="tabs" style="width: auto; padding: 4px;" class="ui-tabs ui-widget ui-widget-content ui-corner-all">
+    <ul class="ui-tabs-nav ui-helper-reset ui-helper-clearfix ui-widget-header ui-corner-all">
+        <li class="ui-state-default ui-corner-top ui-tabs-selected ui-state-active"><a href="http://172.17.110.85/MCXWeb.html#tab-1">Files</a></li>
+    </ul>
+    
+    <div id="tab-1" style="min-height:500px;" class="ui-tabs-panel ui-widget-content ui-corner-bottom">
+    <br>	
+	<table class="supervisor_table" id="manage_table" table_data=" ">   
+		<thead>
+			<tr>
+				<td>File Name</td>
+				<td>Size (bytes)</td>        
+				<td>Remove</td>        
+			</tr>
+		</thead>
+		<tbody><tr file_name="MCXApp1V.tem"></tr><tr expr="0" file_name="MCXApp1V.tem" style="cursor: pointer; color: rgb(0, 0, 0); background-color: rgb(255, 255, 255);">
+				<td>MCXApp1V.tem</td>
+				<td>28210</td>                        
+				<td style="text-align:center"><input id="button_remove" type="button" value="remove" onclick="javascript:button_remove_on_click(this)"></td>		                    
+			</tr><tr expr="1" file_name="MCXApp2V.tem">
+				<td>MCXApp2V.tem</td>
+				<td>42471</td>                        
+				<td style="text-align:center"><input id="button_remove" type="button" value="remove" onclick="javascript:button_remove_on_click(this)"></td>		                    
+			</tr><tr file_name="MCXApp2V.tem"></tr></tbody>
+	</table>     
+	<br>	
+    <table style="padding: 0px 10px 15px 0px; width:100%; ">
+		<tbody><tr>
+			<td>
+				<form id="form_upload_new_template" action="http://172.17.110.85/fs" method="post" enctype="multipart/form-data">
+					<input type="hidden" name="cwd" value="/apps/">
+					
+					<span id="stylefileinput-select_upload_template" class="stylefileinput-container"><span><input type="file" name="selectedfile" id="select_upload_template"></span><input class="ui-button ui-widget ui-state-default ui-corner-all" value="Browse…" type="button"><input class="stylefileinput-text" type="text"></span>
+			
+					<input id="button_upload_template" type="submit" value="Upload File" class="ui-button ui-widget ui-state-default ui-corner-all" role="button" aria-disabled="false">
+ 
+				</form>
+			</td>            
+		</tr>
+	</tbody></table>
+    </div>
+</div>
+
+</div>
+
+  </div>
+
+
+
+
+<div class="ui-dialog ui-widget ui-widget-content ui-corner-all ui-draggable ui-resizable" tabindex="-1" role="dialog" aria-labelledby="ui-dialog-title-popup_dialog" style="display: none; z-index: 1000; outline: 0px; position: absolute;"><div class="ui-dialog-titlebar ui-widget-header ui-corner-all ui-helper-clearfix"><span class="ui-dialog-title" id="ui-dialog-title-popup_dialog">File List</span><a href="http://172.17.110.85/MCXWeb.html#" class="ui-dialog-titlebar-close ui-corner-all" role="button"><span class="ui-icon ui-icon-closethick">close</span></a></div><div id="popup_dialog" class="ui-dialog-content ui-widget-content">    
+    <br>
+    <br>
+        <p id="popup_dialog_text"></p><p>
+    <br>
+    <br>
+</p></div><div class="ui-resizable-handle ui-resizable-n"></div><div class="ui-resizable-handle ui-resizable-e"></div><div class="ui-resizable-handle ui-resizable-s"></div><div class="ui-resizable-handle ui-resizable-w"></div><div class="ui-resizable-handle ui-resizable-se ui-icon ui-icon-gripsmall-diagonal-se ui-icon-grip-diagonal-se" style="z-index: 1001;"></div><div class="ui-resizable-handle ui-resizable-sw" style="z-index: 1002;"></div><div class="ui-resizable-handle ui-resizable-ne" style="z-index: 1003;"></div><div class="ui-resizable-handle ui-resizable-nw" style="z-index: 1004;"></div><div class="ui-dialog-buttonpane ui-widget-content ui-helper-clearfix"><div class="ui-dialog-buttonset"><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-text-only" role="button" aria-disabled="false"><span class="ui-button-text">Close</span></button></div></div></div></body></html>
