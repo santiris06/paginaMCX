@@ -1,0 +1,68 @@
+/*
+MCXWEB U.I. Library.
+
+*/
+
+var MCXWebUI = {
+
+/*VVVVV Utility VVVVV*/
+IsArray: function(obj) {
+   if(!obj) {
+      return false;
+   }
+   
+   if(obj.constructor == Array){
+      return true;
+   }else{
+      return false;
+   }
+},
+
+CreateSelect: function(cSelectID, aSelectEntriesValue, aSelectEntriesDescription, cSelectedIndex, iMultipleSize) {
+    var cSelect  = "";
+    if(iMultipleSize==null) iMultipleSize = 0;    
+        
+    if (!this.IsArray(aSelectEntriesDescription)) {          
+        return;
+    }
+
+    if(iMultipleSize > 0)
+        cSelect = "<select id=\"" + cSelectID + "\" MULTIPLE SIZE=" + iMultipleSize + " >";
+    else
+        cSelect = "<select id=\"" + cSelectID + "\">";
+
+    for (var i=0; i<aSelectEntriesDescription.length; i++) {
+        var cValue = i;
+
+        if(this.IsArray(aSelectEntriesValue)) {
+            if(i < aSelectEntriesValue.length)
+                cValue = aSelectEntriesValue[i];
+        }
+
+        if (aSelectEntriesDescription[i] == cSelectedIndex) {
+            cSelect += "<option value = " + aSelectEntriesValue[i] + " selected>" + aSelectEntriesDescription[i] + "</option>";
+        } else {
+            cSelect += "<option value = " + aSelectEntriesValue[i] + ">" + aSelectEntriesDescription[i] + "</option>";
+        }
+    }
+    
+    cSelect += "</select>";
+
+    return  cSelect;
+},
+/*^^^^^ Utility ^^^^^*/
+
+/*VVVVV User Directory VVVVV*/ 
+/*
+GetUserDirectory: function(fnctID) {
+    var user = MCXWeb.GetAuthorizedUser().name;
+    
+    if(!user) return MCXWeb.UserDirectory + "unauth/";
+    else return MCXWeb.UserDirectory + user + "/";
+    
+    return !auth;
+},
+*/
+/*^^^^^ User Directory ^^^^^*/ 
+
+}
