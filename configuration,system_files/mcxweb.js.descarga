@@ -1,0 +1,1591 @@
+/*
+    Basic tunnel functions to handle MCX HTTP interface.
+    
+*/
+var table_data = null;
+var i = 0;
+
+var MCXWeb = {
+    DebugMode: 1,       // enable debug mode
+    EnableContinuousUpdate: true,
+    ContinuosUpdateRefreshTime:   1000,  // Refresh time in ms
+    ContinuosRequestRefreshTime:  1000,
+    LoadingTag: "<img src='images/loading.gif' />",       // image (complete html tag) to be used when value is not yet available
+    
+    update_tag_list: [],
+
+    VarValues: new TItemList(),
+    RequestList: new TRequestList(),    
+    Cookies: new TCookies(),
+    NodeID: -1,
+    UITarget: -1,
+    AuthLevel: null,   
+    Incomplete: false,  // true when at least one function can not be completed (data not yet arrived)
+    RefreshExpr: false, // true when expression needs to be refreshed
+    
+    DeviceList: null,
+    Configuration: null,
+    Translate: null,
+    AuthorizedUser: null,
+    FirstSetup: null,
+    
+    ConfigDirectory:     "//config/",
+    UserDirectory:       "//user/",        
+    DeviceBackupFileFilter: "*.bak",
+    ContinuosUpdateTimer: null,
+    ContinuosRequestTimer: null,
+    StyleCallback: null,
+  
+    HistoricaAlarmsEnabled: null,
+    
+    SetNodeID: function(nodeID) {
+        this.NodeID = nodeID;
+    },
+    
+    /** This function will be called on form load to setup dynamic tags.
+    */
+    SetupForm: function(body) {        
+        // stop continuous update for server requests
+        this.ClearAllRequest();
+        
+        // add tag location to the update_tag_list
+        this.ProcessTags(body);
+        
+        // replace the tag with default value
+        this.ContinuousUpdate();
+        
+        // start continuous update for server requests
+        this.ContinuousRequest();        
+    },
+
+    /** Update dynamic tags.
+    */
+    UpdateDynamicTags: function(taglst) {
+        var head = false;
+        
+        if (taglst == null)  {
+            taglst = this.update_tag_list;
+            head = true;
+        };
+                
+        
+        if (this.NodeID < 0) {
+            if (this.GetUITarget() == null) return;
+            
+            this.NodeID = this.Cookies.GetCookie("NodeID",this.GetUITarget());
+        }
+        
+        // replace the tag with actual value
+        for (var iii = 0; iii < taglst.length; iii++) {
+            
+            try {
+                if (!taglst[iii].Done)  {
+                    var val = null;
+                    this.Incomplete = false;
+                    this.RefreshExpr = false;
+                    
+                    val = eval("{" + taglst[iii].expr + "}");
+                    
+                    if (!this.Incomplete && !this.RefreshExpr)
+                        taglst[iii].Done = true;
+                    
+                    if (this.Incomplete)
+                        val = null;
+                    
+                    if (taglst[iii].attrib)  {
+                        
+                        // this could be a table, if so, we need some extras
+                        if (taglst[iii].el.nodeName == "mcx:table_data" || taglst[iii].el.nodeName == "table_data")  {  // TODO: remove compatibility check                            
+                            this.SetupTable(taglst[iii],val);
+                        }
+                        else if (taglst[iii].el.nodeName == "mcx:hide")  {  // special attribute to hide a field                            
+                            if(val == null) val = 1;
+                                                        
+                            if ((taglst[iii].el.ownerElement.nodeName == "A") ||
+                                (taglst[iii].el.ownerElement.nodeName == "INPUT") ||
+                                (taglst[iii].el.ownerElement.nodeName == "IMG") ||
+                                (taglst[iii].el.ownerElement.nodeName == "LI") )
+                                taglst[iii].el.ownerElement.style.display = val ? "none" : "inline"
+                            
+                            if (taglst[iii].el.ownerElement.nodeName == "TR")
+                                taglst[iii].el.ownerElement.style.display = val ? "none" : "table-row"
+                                
+                             if ((taglst[iii].el.ownerElement.nodeName == "TH") ||
+                                 (taglst[iii].el.ownerElement.nodeName == "TD"))
+                                 taglst[iii].el.ownerElement.style.display = val ? "none" : "table-cell"
+                            
+                            
+                        }
+                        else if (taglst[iii].el.nodeName == "mcx:checked")  {   // special handling for checked attribute
+                            taglst[iii].el.ownerElement.checked = (val == true || val > 0);
+                        }
+                        else {                            
+                            
+                            if (val == null)
+                                val = "";                       
+                        
+                            taglst[iii].el.value = val;
+                        };
+                        
+                    }
+                    else  {
+                    
+                        if (val == null)
+                            val = this.LoadingTag;
+                                                
+                        taglst[iii].el.innerHTML = val;
+                    };
+                };
+
+                // check if we have "childrens"
+                if (taglst[iii].eval_lst != null)  {
+                    i = 0;
+                    table_data = taglst[iii].table_data;
+                    this.UpdateDynamicTags(taglst[iii].eval_lst);
+                    table_data = null;
+                    i = null;
+                };
+                
+            }
+            catch (err) {
+                this.debug_exception(err);
+            };
+            
+        };
+
+        // make a request to collect dynamic variable values
+        this.PerformVarRequest();
+
+        if (head)  {
+            this.RefreshCount++;
+        };
+        
+        if(!this.Incomplete) {
+            if(this.StyleCallback) this.StyleCallback();
+        };
+    },
+    
+    /** Process all document and collect dynamic tags.
+    */
+    ProcessTags: function(el, taglst) {
+        var update_tag;
+        var tag;
+        var i;
+
+        if (taglst == null) {
+            this.update_tag_list.length = 0;
+            taglst = this.update_tag_list;        
+        }
+        
+        if (el.attributes != null) {
+            for (i = 0; i < el.attributes.length; i++) {
+                tag = trim(el.attributes[i].value);
+                if (tag.charAt(0) == "=") {
+                    update_tag = { "expr": unescape(tag.substr(1)), "el": el.attributes[i], "attrib": true };
+                    
+                    el.attributes[i].value = " ";       // attributes can not be html tag
+                                                        // NOTE: we use space instead of "" to avoid problems with IE
+                    taglst.push(update_tag);
+                    
+                    if (el.attributes[i].nodeName == "mcx:table_data" || el.attributes[i].nodeName == "table_data")  {   // TODO: remove compatibility check
+                        // special handling for tables
+                        // store table ptr, row template, put loading tag
+                        update_tag.tbl = update_tag.el.ownerElement;    // ownerElement is the containing table
+                        this.ProcessTagsTable(update_tag,taglst);
+                    };
+                };
+            };
+        };
+
+        if (el.innerHTML != null)  {
+            tag = trim(el.innerHTML);
+            if (tag.charAt(0) == "=") {
+                update_tag = { "expr": HtmlDecode(tag.substr(1)), "el": el, "attrib": false };
+                el.innerHTML = this.LoadingTag;
+                taglst.push(update_tag);
+            };
+        };
+
+        // if we have a table_data attribute, skip child parsing
+        if (el.childNodes != null && (el.attributes == null || (el.attributes["mcx:table_data"] == null && el.attributes["table_data"] == null))) {  // TODO: remove compatibility check
+            for (i = 0; i < el.childNodes.length; i++) {
+                this.ProcessTags(el.childNodes[i],taglst);
+            };
+        };
+    },
+
+
+    // internal function
+    SetupTable: function(updtag, table_data)  {        
+        updtag.eval_lst = [];   // make sure we remove any child element
+        
+        if (table_data == null || (typeof table_data != "object"))  {
+            return;
+        };
+        
+        // now we have data, setup table in proper way        
+        // store data for future use
+        updtag.table_data = table_data;
+
+        // create one row for each item in the array
+        var r = "";
+        for(var i=0; i < table_data.length; i++)  {
+            r += "<tr expr='=MCXWeb.Refresh();i=" + i + "'>" + updtag.TemplateRow.innerHTML + "</tr>";
+        };
+                
+        replaceTableItem(updtag.tbl.tBodies[0], "<tr>" + updtag.Header.innerHTML + "</tr>" + r + "<tr>" + updtag.Footer.innerHTML + "</tr>");
+        
+        var i = 0;
+        var len = updtag.tbl.tBodies[0].rows.length;
+        if (updtag.Header.innerHTML != "")
+            i = 1;
+        if (updtag.Footer.innerHTML != "")
+            len = len-1;
+            
+        for(; i < len; i++)  {
+            // collect tr attributes
+			/*
+			BUG FIX IE 9
+            for(var j=0; j < updtag.TemplateRow.attributes.length; j++)  {
+                updtag.tbl.tBodies[0].rows[i].setAttribute(updtag.TemplateRow.attributes[j].name, updtag.TemplateRow.attributes[j].value);
+            };
+			*/
+			
+			for(var j=0; j < updtag.TemplateRow.attributes.length; j++)  {
+                $(updtag.tbl.tBodies[0].rows[i]).attr(updtag.TemplateRow.attributes[j].name, updtag.TemplateRow.attributes[j].value);
+            };
+        };
+
+        // now process each row to update values
+        this.ProcessTags(updtag.tbl.tBodies[0], updtag.eval_lst);
+    },
+
+    
+    // internal function
+    ProcessTagsTable: function(updtag)  {
+        // setup table in proper way
+        // store table ptr, row template, put loading tag
+        
+        if (updtag.tbl.tBodies[0].rows.length == 1)  {
+            updtag.TemplateRow = updtag.tbl.tBodies[0].rows[0];
+            updtag.Header = {innerHTML:""};
+            updtag.Footer = {innerHTML:""};
+        }
+        else if (updtag.tbl.tBodies[0].rows.length == 2)  {
+            updtag.TemplateRow = updtag.tbl.tBodies[0].rows[1];
+            updtag.Header = updtag.tbl.tBodies[0].rows[0];
+            updtag.Footer = {innerHTML:""};
+        }
+        else if (updtag.tbl.tBodies[0].rows.length >= 3)  {
+            updtag.TemplateRow = updtag.tbl.tBodies[0].rows[1];
+            updtag.Header = updtag.tbl.tBodies[0].rows[0];
+            updtag.Footer = updtag.tbl.tBodies[0].rows[2];            
+        }
+        else  {
+            // table have no rows
+            updtag.TemplateRow = null;
+            updtag.Header = {innerHTML:""};
+            updtag.Footer = {innerHTML:""};
+        };
+                
+        replaceTableItem(updtag.tbl.tBodies[0], updtag.Header.innerHTML + "<tr><td>" + this.LoadingTag + "</td></tr>" + updtag.Footer.innerHTML);
+    },
+    
+    
+    /** Rebuild the specified table with the new data.
+    */
+    RebuildTable: function(tbl, data)  {
+        // find the update_tag for this table
+        for(var i=0; i<this.update_tag_list.length; i++)  {
+            if (this.update_tag_list[i].tbl == tbl)  {
+                // rebuild the table
+                this.SetupTable(this.update_tag_list[i],data);
+                break;
+            };
+        };
+    },
+    
+    
+    /*
+    */
+    ContinuousRequest: function()  {
+        try  {
+            //console.log("time-req");
+            this.RequestList.DoNextRequest();
+        }
+        catch (err)  {
+            this.debug_exception(err);
+        };
+        
+        if (this.ContinuosRequestTimer)
+            clearTimeout(this.ContinuosRequestTime);
+        
+        this.ContinuosRequestTimer = setTimeout("MCXWeb.ContinuousRequest()", this.ContinuosRequestRefreshTime);
+    },
+    
+    /*
+    */
+    ClearAllRequest: function()  {       
+        if (this.ContinuosRequestTimer)
+            clearTimeout(this.ContinuosRequestTime);
+                
+        this.update_tag_list.length = 0;
+      
+        this.VarValues.list.length = 0;      
+        //this.RequestList.Clear();
+        
+        this.RequestList.RemoveReq("GetVar");
+    },
+
+    /*
+    */
+    ContinuousUpdate: function()  {
+        try  {
+            //console.log("time-upd");             
+            this.UpdateDynamicTags();
+
+            // always repeat variables request
+            var i = this.RequestList.GetItemID("GetVar");
+            
+            if (this.EnableContinuousUpdate) {
+                if (i >= 0)
+                    this.RequestList.list[i].Done = false;
+            }
+        }
+        catch (err)  {
+            this.debug_exception(err);
+        };
+ 
+        if (this.ContinuosUpdateTimer)
+            clearTimeout(this.ContinuosUpdateTimer);        
+ 
+        this.ContinuosUpdateTimer= setTimeout("MCXWeb.ContinuousUpdate()", this.ContinuosUpdateRefreshTime);       
+    },
+
+    /** Request a modbus variable to the device.
+    The variable is added to the cache list.
+    At the end of the cycle, all variables are requested.
+    The current variable value is returned (the first time it will throw a N/A value exception).
+    Once the response is received, the values are stored into a result cache, and will be returned next time the same variable is requested.
+    */
+    GetMBVar: function(iNode, iAddr, cDefaultValueOnError) {
+        var value = null;
+        var error = null;
+        
+        if (iAddr < 0x10000)
+            value = this.GetVar(iNode, 0x550000 + iAddr);
+        else
+            value = this.GetVar(iNode, iAddr);
+            
+        if ((cDefaultValueOnError != null) && (value == null)) {
+            error = this.GetError(iNode, 0x550000 + iAddr);
+            
+            if (error != null) {
+                return cDefaultValueOnError;
+            }
+        
+        }
+            
+        return value;
+            
+    },
+ 
+    /** Write a modbus variable to the device.
+    The variable is added to the write cache list.
+    At the end of the cycle, all variables are written.
+    */
+    SetMBVar: function(iNode, iAddr, iValue, cbCallback) {
+        if (iAddr < 0x10000)
+            return this.SetVar(iNode, 0x550000 + iAddr, iValue, cbCallback);
+        else
+            return this.SetVar(iNode, iAddr, iValue, cbCallback);
+    },
+
+    /** Request a canbus variable to the device.
+    The variable is added to the cache list.
+    At the end of the cycle, all variables are requested.
+    The current variable value is returned (the first time it will throw a N/A value exception).
+    Once the response is received, the values are stored into a result cache, and will be returned next time the same variable is requested.
+    */
+    GetVar: function(iNode, iAddr) {
+        
+       if(iNode == null) {
+            this.Incomplete = true;
+            return null;
+       }
+        
+        var r = null;
+        if (iNode >= 0)  {
+            var iVarID = iNode * 0x1000000 + iAddr;     // variable ID
+            
+            r = this.VarValues.GetItem(iVarID, null);
+        };
+
+        if (r == null) {
+            var e = this.VarValues.GetError(iVarID, null);
+            
+            if (e == null)
+                this.Incomplete = true;
+        } else {            
+            this.RefreshExpr = true;    // this expression must be refreshed
+        }
+        
+        return r;
+    },
+    
+    
+    GetError: function(iNode, iAddr) {
+        
+       if(iNode == null) {
+            this.Incomplete = true;
+            return null;
+       }
+        
+        var r = null;
+        if (iNode >= 0)  {
+            var iVarID = iNode * 0x1000000 + iAddr;     // variable ID
+            
+            r = this.VarValues.GetError(iVarID, null);
+            
+        };
+
+        return r;
+    },
+
+
+    /** Write a canbus variable to the device.
+        The variable is added to the write cache list.
+        At the end of the cycle, all variables are written.
+    */
+    SetVar: function(iNode, iAddr, iValue, cbCallback) {
+        if (iNode < 0)
+            return 0;   // ignore write
+                
+        var iVarID = iNode * 0x1000000 + iAddr;     // variable ID
+        
+        this.RequestList.RemoveItem("SetVal");        
+        this.RequestList.AddReq("SetVal", "", "/cgi-bin/req.cgi", "rq=0x0401" + "&addr0=0x" + iVarID.toString(16) + "&len0=0x4&val0=" + iValue.toString(), cbCallback);
+        
+        var i = this.RequestList.GetItemID("SetVal");        
+        this.RequestList.list[i].PureText = true;   // always want pure text
+        
+        return 1;   // always assume succesfull operation
+    },
+
+
+    /** Request a file from the server.
+        @param cFileName is the pathname of the file to be read. The file must start with /.
+        @param cDefault is the default value that will be returned until the file is not received.
+        @param cbCallback is the function that will be called when data arrives.
+    */
+    GetTextFile: function(cFileName, cDefault, cbCallback) {
+        
+        var r = "";
+        
+        r += "-----------------------------4827543632391\r\n";
+        r += "Content-Disposition: form-data; name=\"rq\"\r\n";
+        r += "\r\n";
+        r += "0x0104\r\n";
+        r += "-----------------------------4827543632391\r\n";
+        r += "Content-Disposition: form-data; name=\"file\"\r\n";
+        r += "\r\n";        
+        r += cFileName;        
+        r += "\r\n-----------------------------4827543632391--\r\n"        
+        
+        r = this.RequestList.AddReq("GetFileMP:"+cFileName, cDefault, "/cgi-bin/readfile.cgi", r, cbCallback); 
+        
+        if (r == cDefault)
+            this.Incomplete = true;
+        
+        return r;
+    },
+
+    /** Save a file to the server.
+        The file must start with /.
+    */
+    SetTextFile: function(cFileName, cContent, cbCallback) {        
+        var i = 0;
+        var r = "";
+        
+        r += "-----------------------------4827543632391\r\n";
+        r += "Content-Disposition: form-data; name=\"rq\"\r\n";
+        r += "\r\n";
+        r += "0x0103\r\n";
+        r += "-----------------------------4827543632391\r\n";
+        r += "Content-Disposition: form-data; name=\"file\"\r\n";
+        r += "\r\n";
+        r += cFileName + "\r\n";
+        r += "-----------------------------4827543632391\r\n";
+        r += "Content-Disposition: form-data; name=\"data\"; filename=\"data\"\r\n";
+        r += "Content-Type: application/octet-stream\r\n";
+        r += "\r\n";
+        r += cContent;
+        r += "\r\n-----------------------------4827543632391--\r\n"
+
+        r = this.RequestList.AddReq("SetFileMP:"+cFileName, null, "/cgi-bin/writefile.cgi", r, cbCallback);        
+        i = this.RequestList.GetItemID("SetFileMP:"+cFileName);        
+        this.RequestList.list[i].PureText = true;   // always want pure text
+        
+        return r;
+    },
+
+
+    /** Perform request of dynamic items to the server.
+        Once the response is received, the values are stored into a result cache.
+    */
+    PerformVarRequest: function() {
+        var respdoc;
+        var req = "rq=0x0400";
+        
+        if (this.VarValues.list.length < 1)
+            return; // no variables to update
+
+        for (var i = 0; i < this.VarValues.list.length; i++) {
+            req += "&addr" + i + "=0x" + this.VarValues.list[i].Name.toString(16); // + "&len" + i + "=0x4";
+        };
+
+        respdoc = this.RequestList.AddReq("GetVar", null, "/cgi-bin/req.cgi", req);
+        var i = this.RequestList.GetItemID("GetVar");
+        this.RequestList.list[i].PureText = true;   // always want pure text
+
+        if (respdoc != null)  {            
+            try {                
+                var getVarResponse = xml2json.parser(respdoc);                        
+                
+                getVarResponse.values.elem = MakeArray(getVarResponse.values.elem);
+                
+                for(var i=0; i < getVarResponse.values.elem.length; i++)
+                {
+                    if(getVarResponse.values.elem[i].err == 0) {
+											
+                        this.VarValues.list[i].Val = getVarResponse.values.elem[i].val;
+                    }else    //ADD BOSDEN
+                        this.VarValues.list[i].Err = getVarResponse.values.elem[i].err;
+                }
+                
+            }
+            catch (err) {                
+                this.debug_exception(err);
+            };
+        };
+    },
+
+    getNodeText: function(node) {
+        if (node.innerText != undefined)
+            return node.innerText;
+        else if (node.textContent != undefined)
+            return node.textContent;
+        else
+            return node.nodeTypedValue;
+    },
+
+    debug_exception: function(err) {
+        if (this.DebugMode != 0)
+            
+            try {
+                console.log("error: " + err.message);
+            }
+            catch (x) {
+                // TODO: detect if we are on IE
+                //alert("error: " + err.message);
+            };
+    },
+    
+    GetDeviceList: function() {
+        // the device list is also assigned to the global variable, for future use.
+        if (this.DeviceList == null) {
+       
+            var deviceXML = this.GetTextFile(this.ConfigDirectory + "devices.xml", "null");
+            
+            if (deviceXML != "null") {                       
+                var deviceArray = new Array();
+                                
+                //$(deviceXML).find("Device").each(function(){
+                var jDeviceXML = $.parseXML(deviceXML);
+                $(jDeviceXML).find("Device").each(function(){                        
+                        var device = new Object();
+                        
+                        device.NodeID      = $(this).find("NodeId").text();
+                        device.VarDescription = $(this).find("Description").text();
+                        device.AppName     = $(this).find("AppName").text();
+                        
+                        deviceArray.push(device);
+                    }
+                );
+
+                this.DeviceList = deviceArray;           
+            }            
+        }
+        
+        if (this.DeviceList == null)
+            this.Incomplete = true;
+            
+        return this.DeviceList;
+    },
+    
+    /** Get the node id of the node where the webserver is running.
+        The value is cached for quick access.
+        @return -1 if unknown.
+    */
+    GetUITarget: function() {
+      
+        var that = this;
+      
+        if (this.UITarget > 0)
+            return this.UITarget;
+                
+        var r = this.RequestList.AddReq("GetUITarget", null, "/cgi-bin/req.cgi", "rq=0x0204");
+        var i = this.RequestList.GetItemID("GetUITarget");
+        this.RequestList.list[i].PureText = true;   // always want pure text
+        
+         if (r == "")
+            this.Incomplete = true;
+
+        // setup onarrival function
+        this.RequestList.list[i].onarrival = function(me)  {                        
+                        var uiTarger = xml2json.parser(me.list[me.CurrIdx].Val);
+                        that.UITarget = uiTarger.values.elem.nodeid;                        
+                        // update value
+                        me.list[me.CurrIdx].Val = this.UITarget;                          
+                    };
+
+        if (r == "")
+            return null;
+        else
+            return r;
+
+    },
+
+
+    /** Get the device index in the device list from the node id.
+        @return -1 if unknown.
+    */
+    GetDeviceIdxFromNodeID: function(node) {
+        // try to get device list
+        this.GetDeviceList();
+
+        if (this.DeviceList == null)
+            return -1;  // device list not yet available
+        
+        if (node == null || node == 0)
+            node = this.NodeID;
+            
+        for (var i = 0; i < this.DeviceList.length; i++) {
+            if (this.DeviceList[i].NodeID == node)
+                return i;
+        };
+        return -1;  // not found
+    },
+
+    GetTemplate: function(app, callback) {
+        var templateXML = this.RequestList.AddReq("Template_"+app, "N.A.", "/cgi-bin/template.cgi", "rq=0x0001&app="  + app, callback);
+        var templateRequestIndex = this.RequestList.GetItemID("Template_"+app);
+        
+        if (templateXML != "N.A.") {                         
+            if(this.RequestList.list[templateRequestIndex].AlreadyParse) {        
+                return templateXML;
+            };
+            
+            var template = { 'AppName': app, 'AppDescr': "Unknown app", 'AppCode': "", 'AppVendorID': 1, 'AppID': 0, 'AppVer': 0, 'TemplateVer': 1,  'Vars': []};            
+            
+            //$(templateXML).find("Var").each(function() {
+            var jTemplateXML = $.parseXML(templateXML);
+            $(jTemplateXML).find("Var").each(function(){
+                var varRow = new Object();
+            
+                varRow.VarName = $(this).find("VarName").text();
+                varRow.VarAddr = parseInt($(this).find("VarAddr").text());
+                
+                if(isNaN(varRow.VarAddr)) {
+                    return true;
+                }
+                
+                varRow.VarUnit = $(this).find("VarUnit").text();
+                
+                varRow.VarEnum   = [];
+                var VarEnumList = $(this).find("VarEnumList");
+                if (VarEnumList) {
+                    $(VarEnumList).find("VarEnum").each(function(){
+                            varRow.VarEnum.push($(this).text());
+                        }
+                    );
+                }
+
+				varRow.VarCat        = $(this).find("VarCat").text();                
+                varRow.VarType       = $(this).find("VarType").text();
+                varRow.VarLabel      = $(this).find("VarLabel").text();
+                varRow.VarDescr      = $(this).find("VarDescr").text();
+                varRow.VarBitMask    = parseInt($(this).find("VarBitMask").text());
+                varRow.VarShift      = parseInt($(this).find("VarShift").text());
+                varRow.VarScale      = parseFloat($(this).find("VarScale").text());
+                varRow.VarOffset     = parseInt($(this).find("VarOffset").text());
+                varRow.VarDecimal    = parseInt($(this).find("VarDecimal").text());
+                varRow.VarMax        = parseFloat($(this).find("VarMax").text());
+                varRow.VarMin        = parseFloat($(this).find("VarMin").text());
+                varRow.VarDefault    = parseFloat($(this).find("VarDefault").text());
+                varRow.VarAccess     = parseInt($(this).find("VarAccess").text());
+                varRow.VarRW         = parseInt($(this).find("VarRW").text());
+                varRow.VarVisibility = $(this).find("VarVisibility").text();				
+                varRow.VarConstant   = parseInt($(this).find("VarConstant").text());
+				varRow.PreviousVal   = null;
+				varRow.CurrentVal    = null;
+				
+                varRow.VarVisible    = true;
+				if (varRow.VarVisibility != "1") {
+					
+					varRow.VarVisibility = varRow.VarVisibility.replace(/\s\s+/g, ' ');					
+					varRow.VarVisibility = varRow.VarVisibility.replace(/Params_/g, "visibility.Params_");
+					varRow.VarVisibility = varRow.VarVisibility.replace(/Par_/g, "visibility.Par_");
+					varRow.VarVisibility = varRow.VarVisibility.replace(/ == /g, ".CurrentVal == ");
+					varRow.VarVisibility = varRow.VarVisibility.replace(/ != /g, ".CurrentVal != ");
+					varRow.VarVisibility = varRow.VarVisibility.replace(/ <= /g, ".CurrentVal <= ");
+					varRow.VarVisibility = varRow.VarVisibility.replace(/ >= /g, ".CurrentVal >= ");
+					varRow.VarVisibility = varRow.VarVisibility.replace(/ < /g, ".CurrentVal < ");
+					varRow.VarVisibility = varRow.VarVisibility.replace(/ > /g, ".CurrentVal > ");
+				}
+				
+                varRow.VarGroup      = [];
+                
+                var VarGroupList = $(this).find("VarGroupList");
+                if (VarGroupList) {
+                    $(VarGroupList).find("VarGroup").each(function(){
+                            varRow.VarGroup.push($(this).text());
+                        }
+                    );
+                }
+                
+                varRow.AlarmGroup  = parseInt($(this).find("VarAlarmGroup").text());
+                
+                template.Vars.push(varRow);
+				
+				eval("template.Vars." + varRow.VarName + " = template.Vars[" + (template.Vars.length - 1)  + "]");
+								
+            });
+            
+            this.RequestList.list[templateRequestIndex].Val = template;
+            this.RequestList.list[templateRequestIndex].AlreadyParse = true;
+            
+            return template;
+        }else{            
+            this.Incomplete = true;
+            return null;
+        }        
+    },
+    
+    /** Get the device template.
+        @return null if device template can not be found.
+    */
+    GetDeviceTemplate: function(node) {
+        
+        //if(parent.template) {            
+        //    return parent.template;
+        //}
+        
+        // load the device template of the specified node
+        var template = null;
+
+        // get device index from nodeid. this will read the device list, if it was not yet read.        
+        var idx = this.GetDeviceIdxFromNodeID(node);
+        
+        // get AppName
+        if (idx >= 0)  {
+        
+            // check if we already have loaded the device template, if not load it
+            if (this.DeviceList[idx].AppTemplate == undefined)  {
+                var app = "";
+        
+                app = this.DeviceList[idx].AppName;
+                
+                // TODO: if we already loaded the same template for another device, we should reuse it
+                
+                // TODO: to limit memory consumption, we should delete from memory the previous device template
+                              
+                if (app != "") {                    
+                    template = this.GetTemplate(app);
+                }else{
+                    // device does not have a template, use the default
+                    template = { 'AppName': "UNKNOWN", 'AppDescr': "Unknown app", 'AppCode': "", 'AppVendorID': 1, 'AppID': 0, 'AppVer': 0, 'TemplateVer': 1,  'Vars': []};
+                }
+                
+                if (template != null)  {
+                    if (template.GetVarByName == undefined)  {
+                        // add to the template the GetVarByName function
+                         
+                        template.GetVarByName = function(Name)  {
+                            var i;
+                            for (i = 0; i < this.Vars.length; i++) {
+                                if (this.Vars[i].VarName == Name)
+                                    return this.Vars[i];
+                            };
+                            
+                            // not found!
+                            return null;
+                        };
+                        
+                    };
+                    if (template.GetVarByAddr == undefined)  {
+                        // add to the template the GetVarByAddr function
+                         
+                        template.GetVarByAddr = function(Addr)  {
+                            var i;
+                            for (i = 0; i < this.Vars.length; i++) {
+                                if (this.Vars[i].VarAddr == Addr)
+                                    return this.Vars[i];
+                            };
+                            
+                            // not found!
+                            return null;
+                        };
+                        
+                    };
+                    
+                    // add template to device definition
+                    this.DeviceList[idx].AppTemplate = template;
+                }
+                else
+                    this.Incomplete = true;
+                
+            };
+            
+            template = this.DeviceList[idx].AppTemplate;
+            
+        };
+
+        //parent.template = template;
+            
+        return template;
+    },
+    
+    
+    /** Get the device object.
+        @param node is the node id of the device.
+        @return null if device can not be found.
+    */
+    GetDevice: function(node)  {
+        var devid = this.GetDeviceIdxFromNodeID(node);
+        if (devid >= 0)
+            return this.DeviceList[devid];
+        else
+            return null;
+    },
+
+
+    /** Get var value by var name.
+        @param iNode is the node id of the device.
+        @param VarName is the requested variable name.
+    */
+    GetVarValueByName: function(iNode, VarName)  {
+        if (iNode == null || iNode == 0)
+            iNode = this.NodeID;
+        
+        var v = null;
+        if (typeof VarName == "string")  {
+            var template = this.GetDeviceTemplate(iNode);
+            if (template == null)
+                return null;
+            
+            v = template.GetVarByName(VarName);
+        }
+        else
+            // VarName is already the variable definition, just use it
+            v = VarName;
+            
+        if (v == null)
+            return null;    // variable not found !
+        
+        return this.GetMBVar(iNode, v.VarAddr);
+    },
+
+
+    /** Get the translated var value by var name.
+        @param iNode is the node id of the device.
+        @param VarName is the requested variable name or the variable definition object.
+        
+        @return the translated value according to the variable scale and offset.
+    */
+    GetFormattedVarValue: function(iNode, VarName)  {
+        var v = null;
+        var val;
+        
+        if (typeof VarName == "string")  {
+            if (this.GetDeviceTemplate(iNode))
+                v = this.GetDeviceTemplate(iNode).GetVarByName(VarName);
+        }
+        else
+            v = VarName;
+        
+        val = this.GetVarValueByName(iNode, v);
+        if (val == null)
+            return null;
+        
+		v.PreviousVal = v.CurrentVal;
+		v.CurrentVal  = val;
+		
+		if (v.VarType.toUpperCase() == "U16") {
+			
+			val = (val >>> 0) & 0xFFFF;		
+			
+		}else if (v.VarType.toUpperCase() == "U32") {
+			
+			val = (val >>> 0);
+		}
+		
+        // translate value
+        if (v.VarBitMask != 0)  {                       
+            
+            val = val & v.VarBitMask;
+                        
+            val = val >>> v.VarShift;
+            
+            //val = val & 0x1;  
+        };        
+        
+        val = val * v.VarScale + v.VarOffset;
+                
+        val = this.FormatVarValue(val, v);
+		
+		v.FormattedVal = val;
+		
+        return val;
+    },    
+    
+    GetTranslatedMinMaxDefault: function(iNode, VarDef)  {
+        if(VarDef == null) {
+            MCXWeb.RefreshExpr = true;
+            return {"min":0, "max":0, "def":0};;
+        }else{
+            MCXWeb.RefreshExpr = false;
+            return {"min":this.FormatVarValue(VarDef.VarMin, VarDef), "max":this.FormatVarValue(VarDef.VarMax, VarDef), "def":this.FormatVarValue(VarDef.VarDefault, VarDef)};
+        }
+    },
+
+
+    /** Translate a variable value according to the variable definition.
+        @param Value is the value read from the device.
+        @param VarDef is the variable definition.
+        
+        TODO: handle float, other variable references, ....
+        If variable is a float, the correct number will be returned.
+        Value can be a string, so it will refer to another variable.
+    */
+    FormatVarValue: function(Value, VarDef)  {
+        // check for enum list
+        if (VarDef.VarEnum.length > 0)
+            return Choose(Value, VarDef.VarEnum);
+        else
+            // TODO: use local decimal point separator
+            return Value.toFixed(VarDef.VarDecimal);
+    },
+
+
+    /** Set the translated var value by var name.
+        @param iNode is the node id of the device.
+        @param VarName is the requested variable name.
+    */
+    SetFormattedVarValue: function(iNode, VarName, Value, cbCallback)  {
+        if (iNode == null || iNode == 0)
+            iNode = this.NodeID;
+                
+        var v = this.GetDeviceTemplate(iNode).GetVarByName(VarName);
+        if (v == null)
+        {            
+            return;
+        }
+        
+        // translate value
+        var val = Value;
+
+        // check for enum list
+        if (v.VarEnum.length > 0)  {
+            val = 0;
+            for(var i=0; i < v.VarEnum.length; i++)
+                if (Value == v.VarEnum[i])  {
+                    val = i;
+                    break;
+                };
+        }
+        else  {
+            val = Value;
+        };
+
+        val = (val - v.VarOffset) / v.VarScale;
+
+        // at this point, number must always be an integer
+        val = Math.round(val);
+
+        if (v.VarBitMask != 0)  {
+            val = val << v.VarShift;
+            val = val & v.VarBitMask;   // make sure we never get out of our mask
+            // we must read back the current value and set it again
+            var curr = this.GetVarValueByName(iNode, VarName, 0);
+            curr = curr & (~v.VarBitMask);
+            val = val | curr;
+        };
+        
+        this.SetMBVar(iNode, v.VarAddr, val, cbCallback);
+    },
+
+
+    /** Get node status.
+        @param node is the node id of the device.
+        @return 0 if device is offline, 1 if device is online.
+    */
+    CheckIsNodeActive: function(iNode)  {
+        if (iNode < 0)
+            return 0;   // always offline
+        
+        if (iNode == this.GetUITarget())
+            return 1;   // local node always online
+                
+        var node_status = this.GetVar(this.GetUITarget(), 0x5C0001 + Math.floor(iNode/32));
+        
+        if (node_status == null)
+            return 0;
+               
+        if (node_status & (1 << (iNode & 0x1F)))
+            return 1;
+        else
+            return 0;
+    },
+    
+    /** Get directory.
+        @param cPath is the directory path (must start with /).
+        @param cMask is the file pattern.
+        @return object including both files and subdirectories.
+    */    
+    GetDirectory: function(cPath, cMask, cbCallback)  {  
+        var r = this.RequestList.AddReq("GetDir_" + cPath + cMask, "", "/cgi-bin/fs.cgi", "rq=0x0101&path=" + cPath, cbCallback);
+        var i = this.RequestList.GetItemID("GetDir_" + cPath + cMask);
+        this.RequestList.list[i].PureText = true;   // always want pure text
+ 
+ 
+        if (r == "")
+            this.Incomplete = true;
+ 
+        // setup onarrival function
+        this.RequestList.list[i].onarrival = function(me)  {                        
+                        var dir = xml2json.parser(me.list[me.CurrIdx].Val).dir;
+                        
+                        dir.files = dir.files.fileinfo;
+                        dir.dirs = dir.dirs.fileinfo;
+                        
+                        // make sure each array is an array
+                        dir.files = MakeArray(dir.files);
+                        dir.dirs = MakeArray(dir.dirs);
+                        
+                        // filter items by cMask
+                        var r = new RegExp("^" + replace(replace(replace(cMask,".","\\."),"*",".*"),"?",".+") + "$", "i");
+                        var i = 0;
+                        while (i < dir.files.length)  {
+                            if (dir.files[i].name.match(r) == null)  {
+                                dir.files.splice(i,1);
+                            }
+                            else
+                                i++;
+                        };
+                        i = 0;
+                        while (i < dir.dirs.length)  {
+                            if (dir.dirs[i].name.match(r) == null)  {
+                                dir.dirs.splice(i,1);
+                            }
+                            else
+                                i++;
+                        };
+ 
+                        // translate date field to date objects
+                        for(i=0; i < dir.files.length; i++)
+                            dir.files[i].date = new Date(dir.files[i].date * 1000);
+                        for(i=0; i < dir.dirs.length; i++)
+                            dir.dirs[i].date = new Date(dir.dirs[i].date * 1000);
+                        
+                        // update value                        
+                        me.list[me.CurrIdx].Val = dir;
+                    };
+ 
+        if (r == "")
+            return null;
+        else
+            return r;
+    },
+    
+    RemoveFile: function(cPath, cFileName,  cbCallback)  {        
+        var r = this.RequestList.AddReq("RemoveFile", "", "/cgi-bin/fs.cgi", "rq=0x0107&path=" + cPath + cFileName, cbCallback);
+        var i = this.RequestList.GetItemID("RemoveFile");
+        this.RequestList.list[i].PureText = true;   // always want pure text
+
+        if (r == "")
+            this.Incomplete = true;
+
+        if (r == "")
+            return null;
+        else
+            return r;
+    },
+    
+    /** Read historical data.
+        @param StartDate is the start date and time
+        @param NSamples is the number of samples requested (e.g. 300 will return 300 values)
+        @param SamplePeriod is the requested sample period (e.g. 10=one sample every 10 seconds)
+        @param VariableList is an array of variables as modbus index.
+        @param cbCallback is the function that will be called when data arrives.
+    */
+    ReadHisDataMB: function(StartDate, NSamples, SamplePeriod, VariableList, cbCallback)  {
+        var StartT = Math.round(StartDate.valueOf()/1000);
+        
+        var r =  "rq=0x0600"
+        r += "&fname=1:/hisdata.log"
+        r += "&startt=" + StartT;
+        r += "&nsamples=" + NSamples; 
+        r += "&endt=4294967295"
+        r += "&speriod=" + SamplePeriod;
+        r += "&type=0"
+        for(var i=0; i < VariableList.length; i++)  {
+            r += "&addr" + i + "=0x" + VariableList[i].toString(16);            
+        };
+
+        r = this.RequestList.AddReq("GetHis", "", "/cgi-bin/hisdata.cgi", r, cbCallback);
+        var i = this.RequestList.GetItemID("GetHis");
+        this.RequestList.list[i].PureText = true;   // always want pure text
+
+        if (r == "")
+            this.Incomplete = true;
+
+        // setup onarrival function
+        this.RequestList.list[i].onarrival = function(me)  {
+                        var data = xml2json.parser(me.list[me.CurrIdx].Val);
+                                                
+                        // make sure the list is an array (it could be a single item if there is only one variable on response)
+                        data.values.samples = MakeArray(data.values.samples);
+                        
+                        for(var i=0; i<data.values.samples.length; i++) {
+                            data.values.samples[i].data.value = MakeArray(data.values.samples[i].data.value);
+                        }
+                        
+                        // translate date/time object
+                        //data.startt = new Date(data.startt * 1000);
+                                                
+                        // update value
+                        me.list[me.CurrIdx].Val = data;
+                    };
+
+        return r;
+    },
+    
+
+    /** Read event log data.
+        @param StartDate is the start date and time (included)
+        @param EndDate is the ending date (included)
+        @param MaxEvents is the maximum number of events to be returned (can be used to limit the events).
+    */
+    ReadELData: function(StartDate, EndDate, MaxEvents, cbCallback)  {
+        var StartT = StartDate.valueOf()/1000;
+        var EndT = EndDate.valueOf()/1000;
+        var r = "";
+        
+        r = "StartT=" + Math.round(StartT) + "&EndT=" + Math.round(EndT);
+        r = r + "&MaxEvents=" + MaxEvents;
+        
+        r = this.RequestList.AddReq("GetEL", "", "/cgi-bin/eldata.cgi", r, cbCallback);
+        var i = this.RequestList.GetItemID("GetEL");
+        this.RequestList.list[i].PureText = true;   // always want pure text
+        
+        if (r == "")
+            this.Incomplete = true;
+
+        // setup onarrival function
+        this.RequestList.list[i].onarrival = function(me)  {
+                        var data = xml2json.parser(me.list[me.CurrIdx].Val).mcxeldata;
+                        
+                        // make sure the list is an array (it could be a single item if there is only one variable on response)
+                        data.event = MakeArray(data.event);
+                        
+                        // translate date/time object
+                        for(var i=0; i<data.event.length; i++)  {
+                            data.event[i].eldate = new Date(data.event[i].eldate * 1000);
+                        };
+                        
+                        // update value
+                        me.list[me.CurrIdx].Val = data.event;
+                    };
+
+        return r;
+    },
+    
+    /** Keep value refreshed
+    */
+    Refresh: function(r)  {       
+        if (r == null || r)
+            this.RefreshExpr = true;
+        else
+            this.RefreshExpr = false;       
+    },
+    
+    /** Refresh all table_data
+    */
+    RefreshTableData: function()  {
+        var taglst;
+        if (taglst == null)  {
+            taglst = this.update_tag_list;
+        };
+
+        for (var iii = 0; iii < taglst.length; iii++) {
+            if (taglst[iii].el.nodeName == "mcx:table_data" || taglst[iii].el.nodeName == "table_data") //<-- test
+                taglst[iii].Done = false;
+        };
+    },
+    
+    /** Refresh all page
+    */
+    RefreshAll: function()  {
+        var taglst;
+        if (taglst == null)  {
+            taglst = this.update_tag_list;
+        };
+
+        for (var iii = 0; iii < taglst.length; iii++) {            
+            taglst[iii].Done = false;
+        };
+    },
+    
+    /** Get First Setup json object
+    */
+    GetFirstSetup: function() {    
+        if (this.FirstSetup == null)
+            this.FirstSetup = eval("(" + this.GetTextFile(this.ConfigDirectory + "firstSetup.json", "null") + ")");
+
+        if (this.FirstSetup == null)
+            this.Incomplete = true;
+            
+        return this.FirstSetup;
+    },
+    
+    SetFirstSetup: function(cbCallback) {
+        this.SetTextFile(this.ConfigDirectory + "firstSetup.json", JSON.stringify(this.FirstSetup, null, '\t'), cbCallback);
+    },
+    
+    /** Get Translate json object
+    */    
+    GetTranslate: function(lang) {
+        if (this.Translate == null) {
+            this.Translate = eval("(" + this.GetTextFile(this.ConfigDirectory + "Translate_" + lang + ".json", "null") + ")");            
+        } 
+                
+        if (this.Translate == null)
+            this.Incomplete = true;
+            
+        return this.Translate;
+    },
+
+    /** Get Upgrade Status    
+    */    
+    GetUpgradeStatus: function(cbCallback) {        
+        var rq = "";
+        
+        rq += "-----------------------------4827543632391\r\n";
+        rq+= "Content-Disposition: form-data; name=\"rq\"\r\n";
+        rq+= "\r\n";
+        rq+= "0x0501\r\n";
+        rq += "\r\n-----------------------------4827543632391--\r\n"
+                
+        var r = this.RequestList.AddReq("GetUpgradeStatus", "", "/cgi-bin/swupd.cgi", rq, cbCallback);       
+        var i = this.RequestList.GetItemID("GetUpgradeStatus");
+        this.RequestList.list[i].PureText = true;   // always want pure text
+
+        // setup onarrival function
+        this.RequestList.list[i].onarrival = function(me)  {                        
+                        var actions = xml2json.parser(me.list[me.CurrIdx].Val).swupdpoll.swupd.action;
+                        
+                        if (actions != null) {
+                            for(var i=0; i<actions.length; i++) {
+                                if(actions[i].addr == null) {
+                                    actions[i].addr = "";                                
+                                } else {
+                                    actions[i].addr = actions[i].addr >> 20;
+                                }
+                                    
+                                    
+                                if(actions[i].remotestatus == null) actions[i].remotestatus = "";
+                                if(actions[i].progress == null) actions[i].progress = "";
+                                if(actions[i].err == null) actions[i].err = "";
+                                
+                                
+                            }
+                        }
+                        me.list[me.CurrIdx].Val = actions;
+                    };
+                    
+        if (r == "") {
+            this.Incomplete = true;        
+            return null;
+        }
+        else
+            return r;
+    },
+    
+    CheckAuthorization: function(minLevel)  {
+        var level = this.GetAuthorization();
+        if(level != null) {            
+            if(level < minLevel) {                
+                document.location="Login.html";  
+            }
+            
+            return level;
+        }else{
+            this.Incomplete = true;
+            return null;        
+        }
+        
+    },
+    
+    GetAuthorization: function()  {
+        
+        var r = this.RequestList.AddReq("GetAuthLevel", "N.A.", "/cgi-bin/authentication.cgi", "rq=0x0002");
+        var i = this.RequestList.GetItemID("GetAuthLevel");
+        this.RequestList.list[i].PureText = true;   // always want pure text
+
+        this.RequestList.list[i].onarrival = function(me)  {          
+            this.AuthLevel = xml2json.parser(me.list[me.CurrIdx].Val).values.level;                                                                                                                
+            me.list[me.CurrIdx].Val = this.AuthLevel;
+        }
+         
+        if (r == "N.A."){    
+                       
+            this.Incomplete = true;
+            return null;        
+        }else {            
+                    
+            return r;
+        }
+    },
+    
+    ClearCache: function()  {
+		
+      this.DeviceList = null;
+          
+      for (var i=0; i<this.RequestList.list.length; i++) {
+        
+        if (this.RequestList.list[i].Name != "GetAuthLevel") {
+          
+          this.RequestList.list.splice(i, 1);
+        }			
+      }		
+    },
+	
+    ClearAuthorization: function()  {
+      
+      this.ClearRequest("GetAuthLevel");
+    },
+   
+    ClearRequest: function(req_name)  {
+      
+      this.DeviceList = null;
+          
+      for (var i=0; i<this.RequestList.list.length; i++) {
+        
+        if (this.RequestList.list[i].Name == req_name) {
+          
+          this.RequestList.list.splice(i, 1);
+        }			
+      }		
+    },
+    
+    /** Get device name
+        @param node is the node id of the device.      
+    */
+    GetNodeDeviceName: function(iNode)  {
+        var bios_code = this.GetVar(iNode, 0x5D0301);
+        
+        if (bios_code == null)
+            return "";
+        else {
+            var device_name = "";
+            switch (bios_code)
+            {            
+                case 4:  device_name = "MMIGRS";   break;
+                case 5:  device_name = "MCX08";    break;
+                case 6:  device_name = "MCX15";    break;
+                case 7:  device_name = "MCX20";    break;
+                case 10: device_name = "MCX06C25"; break;                  
+                case 15: device_name = "EXC06D";   break;
+                case 16: device_name = "MCX06D25"; break;
+                case 17: device_name = "MMIPC0";   break;
+                case 19: device_name = "MCX061V";  break;
+                case 20: device_name = "MMIGRSDG"; break;
+                case 21: device_name = "LCX06C";   break;
+                case 22: device_name = "LCX06C";   break;               
+                case 25: device_name = "MCX152V";  break; 
+				case  29: device_name = "AK-PC551";  break; 
+                case  34: device_name = "MCX08M2";  break; 
+            }
+            
+            return device_name;
+        }
+    },
+    
+    /** Get bios code
+        @param node is the node id of the device.      
+    */
+    GetNodeBiosFileName: function(iNode)  {
+        var bios_code = this.GetVar(iNode, 0x5D0301);
+
+        if (bios_code == null)
+            return "";
+        else {
+            var bios_file_name = "";
+			
+            switch (bios_code)
+            {            
+                case 4:  bios_file_name = "mmigrs.bin";   break;
+                case 5:  bios_file_name = "mcx08.bin";    break;
+                case 6:  bios_file_name = "mcx15.bin";   break;
+                case 7:  bios_file_name = "mcx20.bin";    break;
+                case 10: bios_file_name = "mcx06c25.bin"; break;                  
+                case 15: bios_file_name = "exc06d.bin";   break;
+                case 16: bios_file_name = "mcx06d25.bin"; break;                  
+                case 19: bios_file_name = "mcx061v.bin";  break;
+                case 20: bios_file_name = "mmigrsdg.bin"; break;
+                case 21: bios_file_name = "lcx06c.bin";   break;
+                case 22: bios_file_name = "lcx06c.bin";   break;
+				case 25: bios_file_name = "mcx152v.bin";   break;
+				case 29: bios_file_name = "ak-pc551.bin";   break; 
+                case 31: bios_file_name = "eke.bin";   break;
+                case 34: bios_file_name = "mcx08m2.bin";   break; 
+            }
+            
+            return bios_file_name;
+        }
+    },
+    
+    GetAppDescriptionFromAppID: function(app_id)  {
+        switch (app_id)
+        {            
+            case 1: case "1": app_id = "T3C";   break;
+            case 2: case "2": app_id = "CHILLER HP";   break;
+            case 3: case "3": app_id = "AHU";   break;
+            case 4: case "4": app_id = "FC";   break;
+            case 5: case "5": app_id = "CIRCUITCTRL T3C";   break;
+            case 6: case "6": app_id = "TI";   break;
+            case 7: case "7": app_id = "FI";   break;
+            case 8: case "8": app_id = "MULTIPOWER";   break;
+            case 9: case "9": app_id = "RHP";   break;
+            case 10: case "10": app_id = "COMPRESSOR RACK";   break;
+            case 11: case "11": app_id = "LOGICA DOOR";   break;
+            case 12: case "12": app_id = "LOGICA LPS";   break;
+            case 13: case "13": app_id = "PVSD MONITOR";   break;
+            case 14: case "14": app_id = "ROOFTOP";   break;
+            case 15: case "15": app_id = "POLY";   break;
+            case 16: case "16": app_id = "HEXSIM";   break;
+            case 17: case "17":  app_id = "SPM";   break;            
+        }  
+    
+        return app_id;
+    },
+    
+    /** Get Application ID
+        @param node is the node id of the device.      
+    */
+    GetNodeAppID: function(iNode, cDefaultValueOnError)  {        
+        var app_id = this.GetMBVar(iNode, 0x1388 + 1, cDefaultValueOnError);
+        
+        if (app_id == cDefaultValueOnError)
+            return cDefaultValueOnError;
+        
+        if (app_id == null)
+            return "";
+        
+        this.RefreshExpr = false;
+        
+        return app_id;
+        
+    },
+    
+    /** Get Application Major
+        @param node is the node id of the device.      
+    */
+    GetNodeAppMajow: function(iNode, cDefaultValueOnError)  {
+        var app_majow = this.GetMBVar(iNode, 0x1388 + 2, cDefaultValueOnError);
+        
+        if (app_majow == cDefaultValueOnError)
+            return cDefaultValueOnError;        
+        
+        if (app_majow == null)
+            return "";
+        
+        this.RefreshExpr = false;
+        
+        return app_majow;
+    },
+    
+    /** Get Application Minor
+        @param node is the node id of the device.      
+    */
+    GetNodeAppMinor: function(iNode, cDefaultValueOnError)  {
+        var app_minor = this.GetMBVar(iNode, 0x1388 + 3, cDefaultValueOnError);
+        
+        if (app_minor == cDefaultValueOnError)
+            return cDefaultValueOnError;
+            
+        if (app_minor == null)
+            return "";
+        
+        this.RefreshExpr = false;
+        
+        return app_minor;
+    },
+    
+    /** Get Application Patch
+        @param node is the node id of the device.      
+    */
+    GetNodeAppPatch: function(iNode, cDefaultValueOnError) {
+        var app_patch = this.GetMBVar(iNode, 0x1388 + 4, cDefaultValueOnError);
+        
+        if (app_patch == cDefaultValueOnError)
+            return app_patch;
+            
+        if (app_patch == null)
+            return "";
+        
+        this.RefreshExpr = false;
+        
+        return app_patch;
+    },
+    
+	UpdateVisibility: function(iNode, VarName)  {
+		
+        var v = null;
+        var val;
+		
+		var device_template;
+		
+		device_template = this.GetDeviceTemplate(iNode);
+		
+		if (device_template == null) {		
+			return;
+		}
+        
+		if (typeof VarName == "string")  {
+			
+            if (this.GetDeviceTemplate(iNode))
+                v = device_template.GetVarByName(VarName);
+        }else{
+            v = VarName;
+		}
+		
+		if (v             != null &&
+			  v.PreviousVal != v.CurrentVal) {
+						
+			var visibility = device_template.Vars;
+				
+			for (var i = 0; i < visibility.length; i++) {
+				
+				if (visibility[i].VarVisibility.indexOf(v.VarName) > -1) {
+				
+					visibility[i].VarVisible = eval(visibility[i].VarVisibility);											
+				}
+			}		
+		}
+    },    
+    
+    RefreshCount: 0
+
+};

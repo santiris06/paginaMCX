@@ -1,0 +1,27 @@
+.date-dropdowns {
+  display: inline-block;
+}
+
+.day {
+  min-width: 0px !important;
+}
+
+.month {
+  min-width: 0px !important;
+}
+
+.year {
+  min-width: 0px !important;
+}
+
+.hour {
+  min-width: 0px !important;
+}
+
+.minute {
+  min-width: 0px !important;
+}
+
+.second {
+  min-width: 0px !important;
+}
