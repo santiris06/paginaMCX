@@ -1,0 +1,861 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!-- saved from url=(0033)http://172.17.110.85/MCXWeb.html# -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+  <link type="text/css" href="./network,devices,graphs_files/jquery-ui-1.8.17.custom.css" rel="stylesheet">
+  <link type="text/css" href="./network,devices,graphs_files/mcxweb.css" rel="stylesheet">
+  <link type="text/css" href="./network,devices,graphs_files/supervisor_table.css" rel="stylesheet">
+
+  <script type="text/javascript" src="./network,devices,graphs_files/xml2json.js.descarga"></script>
+
+  <script type="text/javascript" src="./network,devices,graphs_files/mcxweb_utils.js.descarga"></script>
+  <script type="text/javascript" src="./network,devices,graphs_files/mcxweb.js.descarga"></script>
+  <script type="text/javascript" src="./network,devices,graphs_files/mcxweb_ui.js.descarga"></script>
+
+  <script type="text/javascript" src="./network,devices,graphs_files/jquery.min.js.descarga"></script>
+  <script type="text/javascript" src="./network,devices,graphs_files/jquery-ui.custom.min.js.descarga"></script>
+
+  <script type="text/javascript" src="./network,devices,graphs_files/supervisor_table.js.descarga"></script>
+
+  <link type="text/css" href="./network,devices,graphs_files/keyboard.css" rel="stylesheet">
+  <script type="text/javascript" src="./network,devices,graphs_files/jquery.keyboard.js.descarga"></script>
+
+  <script type="text/javascript" src="./network,devices,graphs_files/attrchange.js.descarga"></script>
+  
+  <link type="text/css" href="./network,devices,graphs_files/jquery.date-dropdowns.css" rel="stylesheet">
+  <script type="text/javascript" src="./network,devices,graphs_files/jquery.date-dropdowns.js.descarga"></script>
+
+  <script>
+    var LOCAL_START_TIME = 0;
+    var DEVICE_TIME = 0;
+
+    function setupVirtualKeyboard() {
+      if (MCXWeb.Cookies.GetCookie("vkenable", "") == "true") {
+        virtualKeyboardEnable = true;
+
+        $("#content_area").find('input[type=text], input[type=password], textarea').keyboard({
+          layout: "touchscreen",
+          usePreview: true,
+          autoAccept: true,
+          position: { of: '#page_header',
+            my: 'center top',
+            at: 'center bottom',
+            offset: '0 100'
+          }
+        });
+      }
+    };
+
+    function loadContentArea(html_page_to_load) {
+      //Prevent memory leak            
+      $("#content_area > *").remove();
+      $("#popup_dialog").remove();
+      //^^^
+
+      $("#content_area").load(html_page_to_load, function(response, status, xml) {
+        if (status == "error") {
+          var msg = "Sorry but there was an error: ";
+          alert(msg + xml.status + " " + xml.statusText);
+        } else {
+          MCXWeb.SetupForm(document.getElementById("content_area"));
+        }
+      });
+    };
+
+    function loadHome() {
+      loadContentArea('NetworkOverview.html');
+    };
+
+    function loadHelp() {
+      loadContentArea('Help.html');
+    };
+
+    function loadAlarms() {
+      loadContentArea('ActiveAlarms.html');
+    };
+
+    function loadHistoricalAlarms() {
+      loadContentArea('DeviceHistoricalAlarms.html');
+    };
+
+    function loadNetworkOverview() {
+      loadContentArea('NetworkOverview.html');
+    };
+
+    function loadHistory() {
+      loadContentArea('History.html');
+    };
+
+    function loadHistoryConf() {
+      loadContentArea('HistoryConf.html');
+    };
+
+    function loadDeviceOverview() {
+      var node_app_name = MCXWeb.Cookies.GetCookie("NodeAppName");
+      if (MCXWeb.Cookies.GetCookie("NodeAppName") != undefined) {
+        var html_page_to_load = "DeviceOverview_" + node_app_name + ".html"
+        $("#content_area").load(html_page_to_load, function(response, status, xml) {
+          if (status == "error") {
+            loadContentArea('DeviceOverview.html');
+          } else {
+            MCXWeb.SetupForm(document.getElementById("content_area"));
+          }
+        });
+      }
+    };
+
+    function loadDeviceDetails() {
+      loadContentArea('DeviceDetails.html');
+    };
+
+    function loadDeviceUpdateApp() {
+      loadContentArea('DeviceUpdateApp.html');
+    };
+
+    function loadDeviceUpdateBios() {
+      loadContentArea('DeviceUpdateBios.html');
+    };
+
+    function loadUsersAdmin() {
+      loadContentArea('UserAdmin.html');
+    };
+
+    function loadUserConfiguration() {
+      loadContentArea('UserConfiguration.html');
+    };
+
+    function loadSiteConf() {
+      loadContentArea('SiteConf.html');
+    };
+
+    function loadSystemTest() {
+      loadContentArea('SystemTest.html');
+    };
+
+    function loadReboot() {
+      loadContentArea('Reboot.html');
+    };
+
+    function loadNetworkSetup() {
+      loadContentArea('NetworkSetup.html');
+    };
+
+    function loadDeviceAlarms() {
+      loadContentArea('DeviceAlarms.html');
+    };
+
+    function loadDeviceRuntimeGraphs() {
+      loadContentArea('DeviceRuntimeGraphs.html');
+    };
+
+    function loadDeviceBackup() {
+      loadContentArea('DeviceBackup.html');
+    };
+
+    function loadDeviceRestore() {
+      loadContentArea('DeviceRestore.html');
+    };
+
+    function loadDeviceInfo() {
+      loadContentArea('DeviceInfo.html');
+    };
+
+    function loadSystemConf() {
+      loadContentArea('SystemConf.html');
+    };
+
+    function loadNTPConf() {
+      loadContentArea('NTPConf.html');
+    };
+
+    function loadTemplateConf() {
+      loadContentArea('TemplateConf.html');
+    };
+
+    function setHeaderPageID(text) {
+      document.getElementById("pageId").innerHTML = "&nbsp;" + unescape(text);
+    };
+
+    function logout() {
+      MCXWeb.ClearCache();
+      document.location = "Login.html"
+    };
+
+    function update_watch() {
+
+      if (LOCAL_START_TIME == 0) {
+
+        var start_req_time = Date.now();
+
+        $.ajax({
+          type: "POST",
+          url: "/cgi-bin/ntp.cgi",
+          data: "rq=0x0000",
+          async: false,
+          success: function(xml) {
+
+            DEVICE_TIME = ($(xml).find("localtime").text()) * 1000 + ((Date.now() - start_req_time) / 2);
+            LOCAL_START_TIME = Date.now();
+
+          }
+        });
+      };
+
+      var d = new Date(DEVICE_TIME + (Date.now() - LOCAL_START_TIME));
+
+      document.getElementById("watch").innerHTML = "&nbsp;" +
+        ("0" + d.getUTCDate()).slice(-2) + "/" +
+        ("0" + (d.getUTCMonth() + 1)).slice(-2) + "/" +
+        (d.getUTCFullYear()) + " " +
+        ("0" + d.getUTCHours()).slice(-2) + ":" +
+        ("0" + d.getUTCMinutes()).slice(-2) + ":" +
+        ("0" + d.getUTCSeconds()).slice(-2);
+
+      if ((Date.now() - LOCAL_START_TIME) > 600000) {
+
+        LOCAL_START_TIME = 0;
+      }
+    };
+
+    function getHistoryEnabled() {
+
+      var configuration = MCXWeb.GetTextFile(MCXWeb.ConfigDirectory + "configuration.xml", "null");
+
+      if (configuration == "null")
+        return MCXWeb.LoadingTag;
+
+      var j_configuration = $.parseXML(configuration);
+
+      var history_enabled = $(j_configuration).find("History_Enabled").text();
+
+      if (history_enabled == "1") {
+
+        return 1;
+      } else {
+
+        return 0;
+      }
+    };
+
+    function getHistoricalAlarmEnabled() {
+
+      if (MCXWeb.HistoricaAlarmsEnabled == null) {
+        var configuration = MCXWeb.GetTextFile(MCXWeb.ConfigDirectory + "configuration.xml", "null");
+
+        if (configuration == "null")
+          return MCXWeb.LoadingTag;
+
+        var j_configuration = $.parseXML(configuration);
+
+        var history_enabled = $(j_configuration).find("Historical_Alarm").text();
+
+        if (history_enabled == "1") {
+          MCXWeb.HistoricaAlarmsEnabled = 1
+        } else {
+          MCXWeb.HistoricaAlarmsEnabled = 0
+        }
+      }
+
+      return MCXWeb.HistoricaAlarmsEnabled;
+    };
+
+    function get_site_name() {
+      var configuration = MCXWeb.GetTextFile(MCXWeb.ConfigDirectory + "configuration.xml", "null");
+
+      if (configuration == "null")
+        return MCXWeb.LoadingTag;
+
+      if ($(configuration).find("Site_Name").text() == "") {
+
+        return "MCXWeb";
+
+      } else {
+
+        return $(configuration).find("Site_Name").text();
+      }
+    }
+
+    var style_already_applied = false;
+
+    function style_callback() {
+      if (!style_already_applied) {
+        style_already_applied = true;
+
+        loadNetworkOverview();
+
+        window.setInterval(update_watch, 1000);
+      }
+    };
+
+    MCXWeb.StyleCallback = style_callback;
+    MCXWeb.EnableContinuousUpdate = true;
+
+  </script>
+
+  <script>
+    $(document).ready(function() {
+      $(".level_1_menu_link").hover(function() {
+        $(this).parent().find('div').each(function(i, val) {
+          $(this).show();
+        });
+      });
+
+      $(".level_2_menu_link").click(function() {
+        $(this).closest("div").hide();
+      });
+
+    });
+
+  </script>
+
+</head>
+
+<body onload="MCXWeb.SetupForm(document.getElementById(&#39;main_menu_contained&#39;));">
+
+  <div id="conteiner">
+
+    <div id="header" onclick="javascript:document.location.reload();">
+      <div style="position: absolute; background: url(&#39;../images/header-sx.png&#39;) scroll 0 0 #FFFFFF; width:437px; height:32px; left:0px; top:0px;">
+
+      </div>
+
+      <div style="position: absolute; background: url(&#39;../images/header-dx.png&#39;) scroll 0 0 #FFFFFF; width:100px; height:32px; right:0px; top:0px;">
+
+      </div>
+    </div>
+
+    <div id="main_menu_contained">
+      <div id="main_menu">
+        <ul>
+          <li><a href="javascript:loadNetworkOverview()" target="_self">Network</a></li>
+          <li mcx:hide=" " style="display: none;"><a href="javascript:loadHistory()" target="_self">History</a></li>
+          <li><a href="javascript:loadAlarms()" target="_self">Alarms</a></li>
+          <li mcx:hide=" " style="display: inline;"><a class="level_1_menu_link" id="menu_configuration" href="http://172.17.110.85/MCXWeb.html#" target="_self">Configuration</a>
+            <div style="display: block;">
+              <ul>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadNetworkSetup()" target="_self" style="display: inline;">Network</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadTemplateConf()" target="_self" style="display: inline;">Template &amp; Files</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadUsersAdmin()" target="_self" style="display: inline;">Users</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadSystemConf()" target="_self" style="display: inline;">System</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadDeviceUpdateApp()" target="_self" style="display: inline;">Update</a></li>
+                <li><a mcx:hide=" " class="level_2_menu_link" href="javascript:loadHistoryConf()" target="_self" style="display: none;">History</a></li>
+              </ul>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div id="watch" style="position: absolute; right:5px; top:10px;">&nbsp;28/08/2025 15:45:55</div>
+      <div style="visibility: hidden;">3</div>
+    </div>
+
+    <div id="page_header">
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+        <tbody><tr>
+          <td id="pageId">&nbsp;N.A.&nbsp;(1)</td>
+          <td width="30px" align="center">
+            <a href="javascript:loadHome()"><img src="./network,devices,graphs_files/home.png" alt="Home"></a>
+          </td>
+          <td width="10px" align="center">
+            <img src="./network,devices,graphs_files/separator.png">
+          </td>
+          <td width="30px" align="center">
+            <a href="javascript:logout();"><img src="./network,devices,graphs_files/logout.png" alt="Logout"></a>
+          </td>
+          <td width="10px" align="center">
+            <img src="./network,devices,graphs_files/separator.png">
+          </td>
+          <td width="30px" align="center">
+            <a href="javascript:loadHelp();"><img src="./network,devices,graphs_files/help.png" alt="Logout"></a>
+          </td>
+        </tr>
+      </tbody></table>
+    </div>
+
+    <div id="content_area">
+
+<!--[if IE]><script type="text/javascript" src="js/jquery.flot/excanvas.js"></script><![endif]-->
+
+
+
+
+
+
+<p style="display: none;">3</p>
+
+<div id="wait" style="width: 100%; display: none;">
+  <center>
+    <br>
+    <br>
+    <br><br><img src="./network,devices,graphs_files/loading_page.gif">
+    <br>
+    <br>
+  </center>
+</div>
+
+
+
+<div id="tabs" style="width: auto; padding: 4px;" class="ui-tabs ui-widget ui-widget-content ui-corner-all">
+  <ul class="ui-tabs-nav ui-helper-reset ui-helper-clearfix ui-widget-header ui-corner-all">
+    <li class="ui-state-default ui-corner-top"><a href="http://172.17.110.85/MCXWeb.html#tab-1">Overview</a></li>
+    <li class="ui-state-default ui-corner-top"><a href="http://172.17.110.85/MCXWeb.html#tab-2">Details</a></li>
+    <li class="ui-state-default ui-corner-top"><a href="http://172.17.110.85/MCXWeb.html#tab-3">Alarms</a></li>
+    <li mcx:hide=" " class="ui-state-default ui-corner-top" style="display: none;"><a href="http://172.17.110.85/MCXWeb.html#tab-4">Historical Alarms</a></li>
+    <li class="ui-state-default ui-corner-top ui-tabs-selected ui-state-active"><a href="http://172.17.110.85/MCXWeb.html#tab-5">Graphs</a></li>
+    <li mcx:hide=" " class="ui-state-default ui-corner-top" style="display: inline;"><a href="http://172.17.110.85/MCXWeb.html#tab-6">Backup</a></li>
+    <li mcx:hide=" " class="ui-state-default ui-corner-top" style="display: inline;"><a href="http://172.17.110.85/MCXWeb.html#tab-7">Restore</a></li>
+    <li class="ui-state-default ui-corner-top"><a href="http://172.17.110.85/MCXWeb.html#tab-8">Info</a></li>
+  </ul>
+
+  <div id="tab-1" class="ui-tabs-panel ui-widget-content ui-corner-bottom ui-tabs-hide">
+  </div>
+
+  <div id="tab-2" class="ui-tabs-panel ui-widget-content ui-corner-bottom ui-tabs-hide">
+  </div>
+
+  <div id="tab-3" class="ui-tabs-panel ui-widget-content ui-corner-bottom ui-tabs-hide">
+  </div>
+
+  <div id="tab-4" class="ui-tabs-panel ui-widget-content ui-corner-bottom ui-tabs-hide">
+  </div>
+
+  <div id="tab-5" style="min-height:600px;" class="ui-tabs-panel ui-widget-content ui-corner-bottom">
+    <br>
+    <table style="padding: 0px 10px 15px 0px; width:100%; ">
+      <tbody><tr>
+        <td align="right">
+          <input id="button_manage" manage_mode="false" type="button" value="Change selected" onclick="javascript:button_manage_on_click()" class="ui-button ui-widget ui-state-default ui-corner-all" role="button" aria-disabled="false">
+          <input id="button_draw" type="button" value="Draw" onclick="javascript:button_draw_on_click()" class="ui-button ui-widget ui-state-default ui-corner-all" role="button" aria-disabled="false">
+          <input id="button_stop" type="button" value="Stop" onclick="javascript:button_stop_on_click()" class="ui-button ui-widget ui-state-default ui-corner-all" role="button" aria-disabled="false" style="display: none;">
+          <input id="button_cancel" type="button" value="Cancel" onclick="javascript:button_cancel_on_click()" class="ui-button ui-widget ui-state-default ui-corner-all" role="button" aria-disabled="false" style="display: none;">
+        </td>
+      </tr>
+    </tbody></table>
+    <table class="supervisor_table" id="manage_table" table_data=" " style="display: none;">
+      <thead>
+        <tr>
+          <td style="display: none;">Level 1</td>
+          <td style="display: none;">Level 2</td>
+          <td style="display: none;">Level 3</td>
+          <td>Label</td>
+          <td>Description</td>
+          <td>Selected</td>
+        </tr>
+      </thead>
+      <tbody><tr menu_opened="false" visibility="true" id="Params_ID1014" var_name="Params_ID1014" style="display: none;"></tr><tr class="supervisor_table_menu" menu="1" level="0"><td><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;Solo bomba</td><td></td><td></td></tr><tr expr="0" menu_opened="false" visibility="true" id="Params_ID1014" var_name="Params_ID1014" style="display: none;">
+          <td style="display: none;">Solo bomba</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">SOB</td>
+          <td>Solo bomba</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr class="supervisor_table_menu" menu="1" level="0"><td><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;Set Point</td><td></td><td></td></tr><tr expr="1" menu_opened="false" visibility="true" id="Params_ID24" var_name="Params_ID24" style="display: none;">
+          <td style="display: none;">Set Point</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">SP</td>
+          <td>Set Point</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr class="supervisor_table_menu" menu="1" level="0"><td><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;Alarmas</td><td></td><td></td></tr><tr class="supervisor_table_menu" menu="1" level="1" style="display: none;"><td><img src="./network,devices,graphs_files/empty.png"><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;Resetear alarmas</td><td></td><td></td></tr><tr expr="2" menu_opened="false" visibility="true" id="Params_ID52" var_name="Params_ID52" style="display: none;">
+          <td style="display: none;">Alarmas</td>
+          <td style="display: none;">Resetear alarmas</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">RAL</td>
+          <td>Resetear alarmas</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr class="supervisor_table_menu" menu="1" level="0"><td><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;Parametros</td><td></td><td></td></tr><tr class="supervisor_table_menu" menu="1" level="1" style="display: none;"><td><img src="./network,devices,graphs_files/empty.png"><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;General</td><td></td><td></td></tr><tr class="supervisor_table_menu" menu="1" level="2" style="display: none;"><td><img src="./network,devices,graphs_files/empty.png"><img src="./network,devices,graphs_files/empty.png"><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;Configuracion serial</td><td></td><td></td></tr><tr expr="3" menu_opened="false" visibility="true" id="Params_Sys_NodeID" var_name="Params_Sys_NodeID" style="display: none;">
+          <td style="display: none;">Parametros</td>
+          <td style="display: none;">General</td>
+          <td style="display: none;">Configuracion serial</td>
+          <td style="text-align:center">SEr</td>
+          <td>Serial address (Modbus and CAN)</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="4" menu_opened="false" visibility="true" id="Params_Sys_SerialBaud" var_name="Params_Sys_SerialBaud" style="display: none;">
+          <td style="display: none;">Parametros</td>
+          <td style="display: none;">General</td>
+          <td style="display: none;">Configuracion serial</td>
+          <td style="text-align:center">bAU</td>
+          <td>Serial baudrate (Modbus)</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="5" menu_opened="false" visibility="true" id="Params_Sys_SerialSet" var_name="Params_Sys_SerialSet" style="display: none;">
+          <td style="display: none;">Parametros</td>
+          <td style="display: none;">General</td>
+          <td style="display: none;">Configuracion serial</td>
+          <td style="text-align:center">COM</td>
+          <td>Serial settings (Modbus)</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr class="supervisor_table_menu" menu="1" level="0"><td><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;I/O</td><td></td><td></td></tr><tr class="supervisor_table_menu" menu="1" level="1" style="display: none;"><td><img src="./network,devices,graphs_files/empty.png"><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;AI</td><td></td><td></td></tr><tr expr="6" menu_opened="false" visibility="true" id="AI_TempEntrada" var_name="AI_TempEntrada" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AI1</td>
+          <td>Temp Entrada</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="7" menu_opened="false" visibility="true" id="AI_TempSalida" var_name="AI_TempSalida" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AI2</td>
+          <td>Temp Salida</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="8" menu_opened="false" visibility="true" id="AI_TempTanque" var_name="AI_TempTanque" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AI3</td>
+          <td>Temp Tanque</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="9" menu_opened="false" visibility="true" id="AI_MarchaParada" var_name="AI_MarchaParada" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AI4</td>
+          <td>Marcha Parada</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="10" menu_opened="false" visibility="true" id="AI_PresionSuccion" var_name="AI_PresionSuccion" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AI5</td>
+          <td>Presion Succion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="11" menu_opened="false" visibility="true" id="AI_TempSuccion" var_name="AI_TempSuccion" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AI6</td>
+          <td>Temp Succion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="12" menu_opened="false" visibility="true" id="AI_PresionDescarga" var_name="AI_PresionDescarga" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AI7</td>
+          <td>PresionDescarga</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr class="supervisor_table_menu" menu="1" level="1" style="display: none;"><td><img src="./network,devices,graphs_files/empty.png"><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;DI</td><td></td><td></td></tr><tr expr="13" menu_opened="false" visibility="true" id="DI_GuardaComp1" var_name="DI_GuardaComp1" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DI1</td>
+          <td>Guarda Comp 1</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="14" menu_opened="false" visibility="true" id="DI_GuardaComp2" var_name="DI_GuardaComp2" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DI2</td>
+          <td>Guarda Comp 2</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="15" menu_opened="false" visibility="true" id="DI_GuardaComp3" var_name="DI_GuardaComp3" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DI3</td>
+          <td>Guarda Comp 3</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="16" menu_opened="false" visibility="true" id="DI_ProtectorFase" var_name="DI_ProtectorFase" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DI4</td>
+          <td>Protector Fase</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="17" menu_opened="false" visibility="true" id="DI_AltaPresion" var_name="DI_AltaPresion" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DI5</td>
+          <td>Alta Presion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="18" menu_opened="false" visibility="true" id="DI_BajaPresion" var_name="DI_BajaPresion" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DI6</td>
+          <td>Baja Presion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="19" menu_opened="false" visibility="true" id="DI_GuardaBomba" var_name="DI_GuardaBomba" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DI7</td>
+          <td>Guarda Bomba</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="20" menu_opened="false" visibility="true" id="DI_Flujostato" var_name="DI_Flujostato" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DI</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DI8</td>
+          <td>Flujostato</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr class="supervisor_table_menu" menu="1" level="1" style="display: none;"><td><img src="./network,devices,graphs_files/empty.png"><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;DO</td><td></td><td></td></tr><tr expr="21" menu_opened="false" visibility="true" id="DO_ContacComp1" var_name="DO_ContacComp1" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DO1</td>
+          <td>Contac Comp 1</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="22" menu_opened="false" visibility="true" id="DO_ContacComp2" var_name="DO_ContacComp2" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DO2</td>
+          <td>Contac Comp 2</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="23" menu_opened="false" visibility="true" id="DO_ContacComp3" var_name="DO_ContacComp3" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DO3</td>
+          <td>Contac Comp 3</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="24" menu_opened="false" visibility="true" id="DO_SolenoideAgua" var_name="DO_SolenoideAgua" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DO4</td>
+          <td>Solenoide Agua</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="25" menu_opened="false" visibility="true" id="DO_ByPass" var_name="DO_ByPass" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DO5</td>
+          <td>By Pass</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="26" menu_opened="false" visibility="true" id="DO_Alarma" var_name="DO_Alarma" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">DO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">DO6</td>
+          <td>Alarma</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr class="supervisor_table_menu" menu="1" level="1" style="display: none;"><td><img src="./network,devices,graphs_files/empty.png"><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;AO</td><td></td><td></td></tr><tr expr="27" menu_opened="false" visibility="true" id="AO_EtapaCondensacion1" var_name="AO_EtapaCondensacion1" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AO1</td>
+          <td>Etapa Condensacion 1</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="28" menu_opened="false" visibility="true" id="AO_EtapaCondensacion2" var_name="AO_EtapaCondensacion2" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AO2</td>
+          <td>Etapa Condensacion 2</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="29" menu_opened="false" visibility="true" id="AO_BombaAgua" var_name="AO_BombaAgua" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AO3</td>
+          <td>Bomba Agua</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="30" menu_opened="false" visibility="true" id="AO_PosicionMotorPasoPaso" var_name="AO_PosicionMotorPasoPaso" style="display: none;">
+          <td style="display: none;">I/O</td>
+          <td style="display: none;">AO</td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">AO4</td>
+          <td>Posicion Motor Paso a Paso</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr class="supervisor_table_menu" menu="1" level="0"><td><img arrow="1" src="./network,devices,graphs_files/closed.png"><img src="./network,devices,graphs_files/folder.png">&nbsp;Alarm</td><td></td><td></td></tr><tr expr="31" menu_opened="false" visibility="true" id="AL_GMC1" var_name="AL_GMC1" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A01</td>
+          <td>Alarma guardamotor   compresor 1</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="32" menu_opened="false" visibility="true" id="AL_Probe1" var_name="AL_Probe1" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">E01</td>
+          <td>Temp Sensor Fault</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="33" menu_opened="false" visibility="true" id="AL_GMC2" var_name="AL_GMC2" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A02</td>
+          <td>Alarma guardamotor   compresor 2</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="34" menu_opened="false" visibility="true" id="AL_GMC3" var_name="AL_GMC3" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A03</td>
+          <td>Alarma guardamotor compresor 3</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="35" menu_opened="false" visibility="true" id="AL_GB" var_name="AL_GB" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A04</td>
+          <td>Alarma guardamotor   bomba</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="36" menu_opened="false" visibility="true" id="AL_FJ" var_name="AL_FJ" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A05</td>
+          <td>Alarma flujo</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="37" menu_opened="false" visibility="true" id="AL_AE" var_name="AL_AE" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A06</td>
+          <td>Alarma alimentacion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="38" menu_opened="false" visibility="true" id="AL_AP" var_name="AL_AP" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A07</td>
+          <td>Alarma alta presion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="39" menu_opened="false" visibility="true" id="AL_BP" var_name="AL_BP" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A08</td>
+          <td>Alarma baja presion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="40" menu_opened="false" visibility="true" id="AL_BTS" var_name="AL_BTS" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A09</td>
+          <td>Alarma baja          temperatura salida</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="41" menu_opened="false" visibility="true" id="AL_ATE" var_name="AL_ATE" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A10</td>
+          <td>Alarma alta          temperatura entrada</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="42" menu_opened="false" visibility="true" id="AL_FBVE" var_name="AL_FBVE" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A11</td>
+          <td>Falla bateria valvula</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="43" menu_opened="false" visibility="true" id="AL_BBVE" var_name="AL_BBVE" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A12</td>
+          <td>Baja bateria valvula</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="44" menu_opened="false" visibility="true" id="AL_FSP" var_name="AL_FSP" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A13</td>
+          <td>Falla sensor presion succion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="45" menu_opened="false" visibility="true" id="AL_FSTS" var_name="AL_FSTS" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A14</td>
+          <td>Falla sensor temperatura succion</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="46" menu_opened="false" visibility="true" id="AL_BPAE" var_name="AL_BPAE" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A15</td>
+          <td>Baja presion anticongelamiento</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr expr="47" menu_opened="false" visibility="true" id="AL_FSPD" var_name="AL_FSPD" style="display: none;">
+          <td style="display: none;">Alarm</td>
+          <td style="display: none;"></td>
+          <td style="display: none;"></td>
+          <td style="text-align:center">A16</td>
+          <td>Falla sensor presion descarga</td>
+          <td style="text-align:center"><input type="checkbox"></td>
+        </tr><tr menu_opened="false" visibility="true" id="AL_FSPD" var_name="AL_FSPD" style="display: none;"></tr></tbody>
+    </table>
+
+    <table class="supervisor_table" id="period_table">
+      <thead>
+        <tr>
+          <td>
+            Period
+          </td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <select id="select_period">
+							<option value="60" selected="">1 Min.								
+							</option><option value="600">10 Min.
+							</option><option value="3600">1 Hour
+							</option><option value="10800">3 Hours
+							</option><option value="21600">6 Hours
+							</option><option value="43200">12 Hours
+							</option><option value="86400">24 Hours
+						</option></select>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="supervisor_table" id="view_table" table_data=" ">
+      <thead>
+        <tr>
+          <td>
+            Selected
+          </td>
+        </tr>
+      </thead>
+      <tbody><tr var_name=" "></tr><tr var_name=" "></tr></tbody>
+    </table>
+    <br>
+
+    <div id="graphdiv" style="position: absolute; top: 100px; width: 90%; height: 450px; z-index: -1; display: none;"></div>
+
+  </div>
+
+  <div id="tab-6" class="ui-tabs-panel ui-widget-content ui-corner-bottom ui-tabs-hide">
+  </div>
+
+  <div id="tab-7" class="ui-tabs-panel ui-widget-content ui-corner-bottom ui-tabs-hide">
+  </div>
+
+  <div id="tab-8" class="ui-tabs-panel ui-widget-content ui-corner-bottom ui-tabs-hide">
+  </div>
+</div>
+</div>
+
+  </div>
+
+
+
+
+<div class="ui-dialog ui-widget ui-widget-content ui-corner-all ui-draggable ui-resizable" tabindex="-1" role="dialog" aria-labelledby="ui-dialog-title-popup_dialog_dialog" style="display: none; z-index: 1000; outline: 0px; position: absolute;"><div class="ui-dialog-titlebar ui-widget-header ui-corner-all ui-helper-clearfix"><span class="ui-dialog-title" id="ui-dialog-title-popup_dialog_dialog">Update</span><a href="http://172.17.110.85/MCXWeb.html#" class="ui-dialog-titlebar-close ui-corner-all" role="button"><span class="ui-icon ui-icon-closethick">close</span></a></div><div id="popup_dialog_dialog" style="" class="ui-dialog-content ui-widget-content">
+    <br>
+    <br>
+        <p>Update application:<select id="updateAppFile"></select></p>
+    <br>
+    <br>
+</div><div class="ui-resizable-handle ui-resizable-n"></div><div class="ui-resizable-handle ui-resizable-e"></div><div class="ui-resizable-handle ui-resizable-s"></div><div class="ui-resizable-handle ui-resizable-w"></div><div class="ui-resizable-handle ui-resizable-se ui-icon ui-icon-gripsmall-diagonal-se ui-icon-grip-diagonal-se" style="z-index: 1001;"></div><div class="ui-resizable-handle ui-resizable-sw" style="z-index: 1002;"></div><div class="ui-resizable-handle ui-resizable-ne" style="z-index: 1003;"></div><div class="ui-resizable-handle ui-resizable-nw" style="z-index: 1004;"></div><div class="ui-dialog-buttonpane ui-widget-content ui-helper-clearfix"><div class="ui-dialog-buttonset"><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-text-only" role="button" aria-disabled="false"><span class="ui-button-text">Update</span></button><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-text-only" role="button" aria-disabled="false"><span class="ui-button-text">Cancel</span></button></div></div></div><div class="ui-dialog ui-widget ui-widget-content ui-corner-all ui-draggable ui-resizable" tabindex="-1" role="dialog" aria-labelledby="ui-dialog-title-popup_file_name" style="display: none; z-index: 1000; outline: 0px; position: absolute;"><div class="ui-dialog-titlebar ui-widget-header ui-corner-all ui-helper-clearfix"><span class="ui-dialog-title" id="ui-dialog-title-popup_file_name">Backup file name</span><a href="http://172.17.110.85/MCXWeb.html#" class="ui-dialog-titlebar-close ui-corner-all" role="button"><span class="ui-icon ui-icon-closethick">close</span></a></div><div id="popup_file_name" style="" class="ui-dialog-content ui-widget-content">  	
+    <br>
+		<p>
+		* Please type the backup filename without extension.
+		No special characters are allowed.
+		</p>	
+        <input id="backup_file_name" type="text" value="" size="30" maxlength="25">				
+    <br>
+    <br>
+</div><div class="ui-resizable-handle ui-resizable-n"></div><div class="ui-resizable-handle ui-resizable-e"></div><div class="ui-resizable-handle ui-resizable-s"></div><div class="ui-resizable-handle ui-resizable-w"></div><div class="ui-resizable-handle ui-resizable-se ui-icon ui-icon-gripsmall-diagonal-se ui-icon-grip-diagonal-se" style="z-index: 1001;"></div><div class="ui-resizable-handle ui-resizable-sw" style="z-index: 1002;"></div><div class="ui-resizable-handle ui-resizable-ne" style="z-index: 1003;"></div><div class="ui-resizable-handle ui-resizable-nw" style="z-index: 1004;"></div><div class="ui-dialog-buttonpane ui-widget-content ui-helper-clearfix"><div class="ui-dialog-buttonset"><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-text-only" role="button" aria-disabled="false"><span class="ui-button-text">Close</span></button><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-text-only" role="button" aria-disabled="false"><span class="ui-button-text">Confirm</span></button></div></div></div><div class="ui-dialog ui-widget ui-widget-content ui-corner-all ui-draggable ui-resizable" tabindex="-1" role="dialog" aria-labelledby="ui-dialog-title-popup_dialog" style="display: none; z-index: 1000; outline: 0px; position: absolute;"><div class="ui-dialog-titlebar ui-widget-header ui-corner-all ui-helper-clearfix"><span class="ui-dialog-title" id="ui-dialog-title-popup_dialog">Overview</span><a href="http://172.17.110.85/MCXWeb.html#" class="ui-dialog-titlebar-close ui-corner-all" role="button"><span class="ui-icon ui-icon-closethick">close</span></a></div><div id="popup_dialog" class="ui-dialog-content ui-widget-content">
+  <br>
+  <br>
+  <p id="popup_dialog_text">
+    </p><p>
+      <br>
+      <br>
+</p></div><div class="ui-resizable-handle ui-resizable-n"></div><div class="ui-resizable-handle ui-resizable-e"></div><div class="ui-resizable-handle ui-resizable-s"></div><div class="ui-resizable-handle ui-resizable-w"></div><div class="ui-resizable-handle ui-resizable-se ui-icon ui-icon-gripsmall-diagonal-se ui-icon-grip-diagonal-se" style="z-index: 1001;"></div><div class="ui-resizable-handle ui-resizable-sw" style="z-index: 1002;"></div><div class="ui-resizable-handle ui-resizable-ne" style="z-index: 1003;"></div><div class="ui-resizable-handle ui-resizable-nw" style="z-index: 1004;"></div><div class="ui-dialog-buttonpane ui-widget-content ui-helper-clearfix"><div class="ui-dialog-buttonset"><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-text-only" role="button" aria-disabled="false"><span class="ui-button-text">Close</span></button></div></div></div></body></html>

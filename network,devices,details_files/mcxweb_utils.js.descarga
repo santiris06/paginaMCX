@@ -1,0 +1,386 @@
+/*
+    Basic tunnel functions to handle MCX HTTP interface.
+    
+*/
+
+function TItemList() {
+    this.list = [];
+
+    this.GetItemID = function(Name) {
+        for (var i = 0; i < this.list.length; i++) {
+            if (this.list[i].Name == Name)
+                return i;
+        };
+        
+        return -1;  // not found
+    };
+
+    this.CreateItem = function(Name, Value) {
+        var i = this.GetItemID(Name);
+        if (i >= 0)
+            return i;
+
+        // variable was never been requested, add a new request row
+        var v = { "Name": Name, "Val": Value };
+        i = this.list.push(v) - 1;
+
+        return i;
+    };
+
+    this.SetItem = function(Name, Value) {
+        var i = this.CreateItem(Name, Value);
+        this.list[i].Val = Value;
+    };
+
+    this.GetItem = function(Name, Value) {
+        var i = this.CreateItem(Name, Value);
+
+        // return current value
+        return this.list[i].Val;
+    };
+    
+    this.GetError = function(Name, Value) {
+        var i = this.CreateItem(Name, Value);
+
+        // return current error
+        return this.list[i].Err;
+    };
+    
+    this.RemoveItem = function(Name) {
+        var i = this.GetItemID(Name);
+        if (i >= 0) {
+            this.list.splice(i,1); 
+        }
+    };
+};
+
+
+function TRequestList() {
+    this.init = TItemList;
+    this.init();
+    this.init = null;
+    
+    this.CurrIdx = -1;
+
+    try {
+        this.server = new XMLHttpRequest();
+    }
+    catch (err) {
+        alert("Please update your browser to a newer version!");
+        return;
+    };
+    
+    this.waiting_response = false;
+   
+    // set response function
+    this.server.TRequestList_targetobj = this;
+    this.server.onreadystatechange = function() {
+        var me = this.TRequestList_targetobj;    // "this" is the XMLHttpRequest object that changed it's state
+        if (this.readyState == 4) {
+            if (this.status == 200) {
+                try {                    
+                    if (!me.list[me.CurrIdx].Updated)  {
+                        if (typeof me.list[me.CurrIdx].Val == "string" || me.list[me.CurrIdx].PureText != null) {														
+                            me.list[me.CurrIdx].Val = this.responseText;
+                        } else {                            
+                            me.list[me.CurrIdx].Val = this.responseXML;
+                        }
+                        
+                        // on arrival, post-process the data
+                        if (me.list[me.CurrIdx].onarrival != null)
+                            me.list[me.CurrIdx].onarrival.call(this, me);
+
+                        // mark request as "done"
+                        me.list[me.CurrIdx].Done = true;
+
+
+                        if (me.list[me.CurrIdx].callback != null)  {
+                            // on callback, "this" will be the XMLHttpRequest object that made the request, the first parameter will be the RequestList object
+                            me.list[me.CurrIdx].callback.call(this, me);
+                        };
+
+                    };
+                }
+                catch (err) {
+                    MCXWeb.debug_exception(err);
+                };
+            }
+            
+            if (this.status == 404) {                
+                try {
+                    me.list[me.CurrIdx].Val = "";
+                    
+                    // on arrival, post-process the data
+                    if (me.list[me.CurrIdx].onarrival != null)
+                        me.list[me.CurrIdx].onarrival.call(this, me);
+
+                    // mark request as "done"
+                    me.list[me.CurrIdx].Done = true;
+
+
+                    if (me.list[me.CurrIdx].callback != null)  {
+                        // on callback, "this" will be the XMLHttpRequest object that made the request, the first parameter will be the RequestList object
+                        me.list[me.CurrIdx].callback.call(this, me);
+                    };
+                }
+                catch (err) {
+                    MCXWeb.debug_exception(err);
+                };
+            }
+            
+            me.waiting_response = false;
+            
+            // go on with the next request
+            MCXWeb.UpdateDynamicTags();          
+        };
+    };
+    
+    /** Add a request to the queue.
+        If a request with the same name is already on queue, it will be overwritten.
+    */
+    this.AddReq = function(Name, Value, url, req, callback) {
+        var i = this.CreateItem(Name, Value);
+        if (this.list[i].req != req || this.list[i].url != url)  {
+            // updated is true when the request is changed
+            // on receive, if update is true the request have been updated and the response is no more valid and must be ignored
+            this.list[i].Updated = true;
+            this.list[i].url = url;
+            this.list[i].req = req;
+            this.list[i].Val = Value;   // reset to default value
+            this.list[i].callback = callback;
+            this.list[i].Done = false;
+        };
+        //if (this.list[i].url != null)
+        //    this.list[i].Done = false;
+        
+        return this.list[i].Val;
+    };
+
+
+    /** Make the next request in the queue to the server.
+    */
+    this.DoNextRequest = function() {
+        if (this.waiting_response)
+            return;
+            
+        this.waiting_response = true;
+        
+        // search the next valid request to be done
+        var found = false;
+        for(var i=0; i < this.list.length; i++)  {
+            this.CurrIdx++;
+            if (this.CurrIdx >= this.list.length)
+                this.CurrIdx = 0;
+            if ((!this.list[this.CurrIdx].Done)&&(this.list[this.CurrIdx].url != null)) {//ADD BOSDEN                
+                found = true;
+                this.list[this.CurrIdx].Updated = false;
+                break;
+            };
+        };
+
+        // if we can not found any valid request in the queue, quit here        
+        if (!found)  {
+            this.waiting_response = false;
+            return;
+        };
+
+        // choose request mode (file request must be done through GET)
+        if (this.list[this.CurrIdx].req == null) {
+            var r = "";
+            if (this.list[this.CurrIdx].req != null)
+                r = "?" + this.list[this.CurrIdx].req;
+            this.server.open("GET", this.list[this.CurrIdx].url + r, true);
+            this.server.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            this.server.send(null);
+        }
+        else
+        {
+        
+            this.server.open("POST", this.list[this.CurrIdx].url, true);
+ 
+            // patch for multipart form data
+            if ((this.list[this.CurrIdx].Name.indexOf("SetFileMP:") == 0) ||
+                (this.list[this.CurrIdx].Name.indexOf("GetFileMP:") == 0) ||
+                (this.list[this.CurrIdx].Name.indexOf("GetUpgradeStatus") == 0) ||
+                (this.list[this.CurrIdx].Name.indexOf("UpdateFirmware:") == 0)) {                
+                this.server.setRequestHeader("Content-Type", "multipart/form-data; boundary=---------------------------4827543632391");
+                //this.server.setRequestHeader("Content-Length", ""+this.list[this.CurrIdx].req.length);
+            }
+            else        
+                this.server.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            
+            //this.server.setRequestHeader("connection", "close");
+            this.server.send(this.list[this.CurrIdx].req);
+        };
+    };
+
+    
+    /** Remove a request from the queue.
+        The request response will be kept, but no new requests will be made.
+    */
+    this.RemoveReq = function(Name) {
+        var i = this.CreateItem(Name, "");
+        this.list[i].url = null;
+        this.list[i].Done = false;
+    };
+
+    
+    /** Get value of current request.
+    */
+    this.GetVal = function() {
+        return this.list[this.CurrIdx].Val;
+    };
+
+    
+    this.Clear = function() {        
+        this.list.length = 0;      
+    };
+};
+
+function TCookies()  {
+
+    this.SetCookie = function(Name, Value)  {        
+        document.cookie = Name + "=" + escape(Value); + "; path=/";
+    };
+
+    this.GetCookie = function(Name, Default)  {
+        var cookies = "; " + document.cookie + "; ";
+        
+        // add also GET query string on front, to give priority to it
+        var query = window.location.search.substr(1);
+        query = query.replace(/&/g,"; ");
+        cookies = "; " + query + "; " + cookies;
+                
+        var p = cookies.indexOf("; " + Name + "=");
+        if (p >= 0)  {
+            p += Name.length + 3;
+            var p2 = cookies.indexOf(";", p);
+            var s = cookies.substr(p, p2 - p);
+            if (typeof Default == "number")
+                return parseInt(s);
+            else
+                return s;
+        }
+        else
+            return Default;
+    };
+
+};
+
+/** Translate a string encoded in HTML format into ascii characters.
+    e.g. HtmlDecode("a&amp;b") => "a&b"
+*/
+function HtmlDecode(s)  {
+    s = s.replace(/&gt;/g,">");
+    s = s.replace(/&lt;/g,"<");
+    s = s.replace(/&quot;/g,'"');
+    s = s.replace(/&#039;/g,"'");
+    s = s.replace(/&amp;/g,"&");
+    return s;
+};
+
+
+/** Choose between a list of options.
+*/
+function Choose(a, lst)  {
+    if (typeof a == "boolean")  {
+        if (a)
+            a = 1;
+        else
+            a = 0;
+    };
+    
+    if (a < 0)
+        a = 0;
+    if (a >= lst.length)
+        a = lst.length-1;
+    
+    return lst[a];
+};
+
+
+/** Make sure the obj is an array
+*/
+function MakeArray(obj)  {
+    if (obj == null)
+        obj = [];
+    else if (obj.length == null)
+        obj = [ obj ];
+    return obj;
+};
+
+
+
+// jQuery replacement (in future we should use jQuery)
+
+
+function trim(stringToTrim) {
+	return stringToTrim.replace(/^\s+|\s+$/g,"");
+}
+function ltrim(stringToTrim) {
+	return stringToTrim.replace(/^\s+/,"");
+}
+function rtrim(stringToTrim) {
+	return stringToTrim.replace(/\s+$/,"");
+}
+
+// replace any occurrence of a into src with b
+function replace(src, a, b)  {
+    return src.replace(new RegExp(a, 'g'), b);
+}
+
+
+
+function replaceTableItem(item, innerHTML)  {
+    // IE does not accept to replace an item into a table with innerHTML, but this is a workaround
+    
+    // NOTE: does not work if item is null !
+    
+    
+    var prefix = "";
+    var postfix = "";
+    var pos = item;
+    var id = "";
+    
+    
+    while (pos.nodeName != "TABLE")  {
+        // I need to move up
+        prefix = "<" + pos.nodeName + ">" + prefix;
+        postfix = postfix + "</" + pos.nodeName + ">";
+        if (id == "")
+            id = pos.nodeName;
+        pos = pos.parentNode;   // move up
+    };
+    if (id == "")
+        id = "TABLE";
+    
+
+    // create a dynamic tag to host the parsing of innerHTML
+    var el = document.createElement("div");
+    
+    el.innerHTML = "<table>" + prefix + innerHTML + postfix + "</table>";
+    
+    var res = el.getElementsByTagName(id)[0];
+    
+    item.parentNode.replaceChild(res, item);
+
+    delete el;
+}
+
+function replace(str, substr, newstring) {
+    return str.replace(substr, newstring);
+}
+
+function clearForLogout()  {
+    MCXWeb.RequestList.Clear();
+
+    document.cookie='mcxauth=; expires=Thu, 01-Jan-70 00:00:01 GMT;'; 
+}
+
+function modulo(a, b) {
+	return a - Math.floor(a/b)*b;
+}
+
+function ToUint32(x) {
+	return modulo(ToInteger(x), Math.pow(2, 32));
+}
